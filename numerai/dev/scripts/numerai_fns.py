@@ -221,6 +221,7 @@ def create_rolling_features(df,
     if isinstance(rolling_cols, str) and ewm_cols.lower() == 'all_numeric':
         ewm_cols = list(df.select_dtypes(include=np.number).columns)
 
+    # lag_dfs_lst = []
 
     if groupby_cols is None or len(groupby_cols) == 0:
 
@@ -228,11 +229,13 @@ def create_rolling_features(df,
         if rolling_fn is not None and len(rolling_cols) > 0:
             new_rolling_cols = [i + '_rolling_' + rolling_fn for i in rolling_cols]
             df[new_rolling_cols] = getattr(df[rolling_cols].rolling(**rolling_params), rolling_fn)()
+            # lag_dfs_lst.append(getattr(df[rolling_cols].rolling(**rolling_params), rolling_fn)().add_suffix('_rolling_' + rolling_fn))
 
         # ewm
         if ewm_fn is not None and len(ewm_cols) > 0:
             new_ewm_cols = [i + '_ewm_' + ewm_fn for i in ewm_cols]
             df[new_ewm_cols] = getattr(df[ewm_cols].ewm(**ewm_params), ewm_fn)()
+            # lag_dfs_lst.append(getattr(df[ewm_cols].ewm(**ewm_params), ewm_fn)().add_suffix('_ewm_' + ewm_fn))
 
     else:
 
@@ -267,7 +270,6 @@ def create_rolling_features(df,
             df[[i + '_diff' for i in diff_cols]] = df.groupby(groupby_cols)[diff_cols].transform(lambda col: col.diff())
 
     return df
-
 
 
 def drop_suffix_nas(df, col_suffix='1d', id_cols=['date', 'bloomberg_ticker']):

@@ -335,7 +335,6 @@ class CreateFeatures():
         self.df_symbols = df_symbols
         self.copy = copy
 
-<<<<<<< HEAD
     def create_naive_features_single_symbol(self,\
                                             symbol='',\
                                             symbol_sep='_',\
@@ -344,16 +343,11 @@ class CreateFeatures():
                                             low_col='low',\
                                             close_col='close',\
                                             volume_col='volume'):
-=======
-
-    def compute_naive_features_single_symbol(self, symbol):
->>>>>>> 607218e44551219d2aa08469d9fe08dc6e05db2a
 
         if self.copy: self.df_symbols = self.df_symbols.copy()
 
         orig_cols = self.df_symbols.columns
 
-<<<<<<< HEAD
         self.df_symbols[symbol + symbol_sep + 'move'] = self.df_symbols[symbol + symbol_sep + close_col] - self.df_symbols[symbol + symbol_sep + open_col]
         self.df_symbols[symbol + symbol_sep + 'move_pct'] = self.df_symbols[symbol + symbol_sep + 'move'] / self.df_symbols[symbol + symbol_sep + open_col]
         self.df_symbols[symbol + symbol_sep + 'move_pct_change'] = self.df_symbols[symbol + symbol_sep + 'move'].pct_change()
@@ -378,32 +372,6 @@ class CreateFeatures():
 
         self.df_symbols[symbol + symbol_sep + 'low_minus_prev_close'] = self.df_symbols[symbol + symbol_sep + low_col] - self.df_symbols[symbol + symbol_sep + close_col].shift()
         self.df_symbols[symbol + symbol_sep + 'high_minus_prev_close'] = self.df_symbols[symbol + symbol_sep + high_col] - self.df_symbols[symbol + symbol_sep + close_col].shift()
-=======
-        self.df_symbols[symbol + '_move'] = self.df_symbols[symbol + '_close'] - self.df_symbols[symbol + '_open']
-        self.df_symbols[symbol + '_move_pct'] = self.df_symbols[symbol + '_move'] / self.df_symbols[symbol + '_open']
-        self.df_symbols[symbol + '_move_pct_change'] = self.df_symbols[symbol + '_move'].pct_change()
-
-        self.df_symbols[symbol + '_pct_chg'] = self.df_symbols[symbol + '_move'] / self.df_symbols[symbol + '_close'].shift()
-
-        self.df_symbols[symbol + '_range'] = self.df_symbols[symbol + '_high'] - self.df_symbols[symbol + '_low']
-        self.df_symbols[symbol + '_range_pct_change'] = self.df_symbols[symbol + '_range'].pct_change()
-
-        self.df_symbols[symbol + '_high_move'] = self.df_symbols[symbol + '_high'] - self.df_symbols[symbol + '_open']
-        self.df_symbols[symbol + '_high_move_pct'] = self.df_symbols[symbol + '_high_move'] / self.df_symbols[symbol + '_open']
-        self.df_symbols[symbol + '_high_move_pct_change'] = self.df_symbols[symbol + '_high_move'].pct_change()
-
-        self.df_symbols[symbol + '_low_move'] = self.df_symbols[symbol + '_low'] - self.df_symbols[symbol + '_open']
-        self.df_symbols[symbol + '_low_move_pct'] = self.df_symbols[symbol + '_low_move'] / self.df_symbols[symbol + '_open']
-        self.df_symbols[symbol + '_low_move_pct_change'] = self.df_symbols[symbol + '_low_move'].pct_change()
-
-        self.df_symbols[symbol + '_volume_pct_change'] = self.df_symbols[symbol + '_volume'].pct_change()
-
-        self.df_symbols[symbol + '_low_minus_close'] = self.df_symbols[symbol + '_low'] - self.df_symbols[symbol + '_close']
-        self.df_symbols[symbol + '_high_minus_close'] = self.df_symbols[symbol + '_high'] - self.df_symbols[symbol + '_close']
-
-        self.df_symbols[symbol + '_low_minus_prev_close'] = self.df_symbols[symbol + '_low'] - self.df_symbols[symbol + '_close'].shift()
-        self.df_symbols[symbol + '_high_minus_prev_close'] = self.df_symbols[symbol + '_high'] - self.df_symbols[symbol + '_close'].shift()
->>>>>>> 607218e44551219d2aa08469d9fe08dc6e05db2a
 
         return self.df_symbols[[i for i in self.df_symbols.columns if not i in orig_cols]] # don't return original columns since the dfs are merged later
 
@@ -414,11 +382,7 @@ class CreateFeatures():
 
             df_init = self.df_symbols.copy() # create a copy to avoid duplicate columns
 
-<<<<<<< HEAD
             delayed_list = [delayed(self.create_naive_features_single_symbol(symbol = s)) for s in symbols] # parallelize by symbol
-=======
-            delayed_list = [delayed(self.compute_naive_features_single_symbol(symbol = s)) for s in symbols] # parallelize by symbol
->>>>>>> 607218e44551219d2aa08469d9fe08dc6e05db2a
             df_symbols_tuple = dask.compute(*delayed_list, num_workers = num_workers)
             output_list = [df_symbols_tuple[i] for i in range(len(df_symbols_tuple))]
             # df_symbols_out = pd.concat(output_list, axis=1, sort=False)
@@ -434,24 +398,14 @@ class CreateFeatures():
         else:
 
             df_init = self.df_symbols.copy() # create a copy to avoid duplicate columns
-<<<<<<< HEAD
             df_symbols_out = self.create_naive_features_single_symbol(symbol = symbols[0])
-=======
-            df_symbols_out = self.compute_naive_features_single_symbol(symbol = symbols[0])
->>>>>>> 607218e44551219d2aa08469d9fe08dc6e05db2a
             df_symbols_out = pd.merge(df_init, df_symbols_out, how = join_method, left_index = True, right_index = True)
 
             for symbol in symbols[1:]:
 
-<<<<<<< HEAD
                 df_symbols_i = self.create_naive_features_single_symbol(symbol = symbol)
 
                 # df_symbols_out = pd.concat([df_symbols_out, self.create_naive_features_single_symbol(symbol = symbol)], axis = 1)
-=======
-                df_symbols_i = self.compute_naive_features_single_symbol(symbol = symbol)
-
-                # df_symbols_out = pd.concat([df_symbols_out, self.compute_naive_features_single_symbol(symbol = symbol)], axis = 1)
->>>>>>> 607218e44551219d2aa08469d9fe08dc6e05db2a
                 df_symbols_out = pd.merge(df_symbols_out,
                                           df_symbols_i,
                                           how = join_method,
@@ -513,84 +467,6 @@ def RSI(prices, interval=14):
     RS = RolUp / RolDown
     RSI = 100.0 - (100.0 / (1.0 + RS))
     return RSI
-
-
-def create_rolling_features(df,\
-                            rolling_params,\
-                            rolling_fn,\
-                            ewm_params,\
-                            ewm_fn,\
-                            rolling_cols = 'all_numeric',\
-                            ewm_cols = 'all_numeric',\
-                            join_method='outer',\
-                            groupby_cols = None,\
-                            copy=True):
-
-
-    """
-    Parameters
-    __________
-    groupby_cols : list or str cols to group by before applying rolling transformations
-        example: pass groupby_cols to the stacked ticker numerai dataset, but not a wide df
-    rolling_cols : cols to apply rolling_fn to
-    ewm_cols : cols to apply ewm_fn to
-    rolling_params : dict params passed to df.rolling()
-    rolling_fn : str called from df.rolling().rolling_fn (e.g. df.rolling.mean() is called with getattr)
-    ewm_params : dict params passed to df.ewm()
-    ewm_fn : str called from df.ewm().ewm_fn (e.g. df.ewm.mean() is called with getattr)
-    join_method : str 'inner', 'outer', 'left', or 'right' - how to join the dfs
-    copy : bool whether or not to make a copy of the df
-
-    """
-
-    if copy: df = df.copy()
-
-    if rolling_cols.lower() == 'all_numeric':
-        rolling_cols = list(df.select_dtypes(include=np.number).columns)
-    if ewm_cols.lower() == 'all_numeric':
-        ewm_cols = list(df.select_dtypes(include=np.number).columns)
-
-    lag_dfs_lst = []
-
-    if groupby_cols is None:
-        # rolling
-        lag_dfs_lst.append(getattr(df[rolling_cols].rolling(**rolling_params), rolling_fn)().add_suffix('_rolling_' + rolling_fn))
-
-        # ewm
-        lag_dfs_lst.append(getattr(df[ewm_cols].ewm(**ewm_params), ewm_fn)().add_suffix('_ewm_' + ewm_fn))
-
-    else:
-
-        if isinstance(groupby_cols, list):
-            assert(len(groupby_cols) == len(set(groupby_cols))), 'There are duplicates in groupby_cols!'
-            rolling_cols_to_select = [i for i in list(set(groupby_cols + rolling_cols)) if i in df.columns] # could be index name
-            ewm_cols_to_select = [i for i in list(set(groupby_cols + ewm_cols)) if i in df.columns] # could be index name
-        elif isinstance(groupby_cols, str):
-            rolling_cols_to_select = [i for i in list(set([groupby_cols] + rolling_cols)) if i in df.columns]
-            ewm_cols_to_select = [i for i in list(set([groupby_cols] + ewm_cols)) if i in df.columns]
-        else:
-            raise('Input param groupby_cols is not a list, string, or None!')
-
-        # rolling
-        lag_dfs_lst.append(
-            df[rolling_cols_to_select].\
-            groupby(groupby_cols).\
-            apply(lambda x: getattr(x.rolling(**rolling_params), rolling_fn)()).\
-            add_suffix('_rolling_' + rolling_fn)\
-        )
-
-        # ewm
-        lag_dfs_lst.append(
-            df[ewm_cols_to_select].\
-            groupby(groupby_cols).\
-            apply(lambda x: getattr(x.ewm(**ewm_params), ewm_fn)()).\
-            add_suffix('_ewm_' + ewm_fn)\
-        )
-
-    df_lag = reduce(lambda x, y: pd.merge(x, y, how=join_method, left_index=True, right_index=True), lag_dfs_lst)
-    df = pd.merge(df, df_lag, how=join_method, left_index=True, right_index=True)
-
-    return df
 
 
 
@@ -701,40 +577,3 @@ class CreateTargets():
                                 s + target_suffix] = 1
 
         return self.df_symbols
-<<<<<<< HEAD
-
-
-def create_lagging_features(df, lagging_map, groupby_cols=None, new_col_prefix='prev', copy=True):
-
-    """
-
-    Parameters
-    __________
-
-    df : pandas df
-    groupby_cols : str or list of cols to groupby before creating lagging transformation cols
-    lagging_map : dict with keys as colnames and values as a list of periods for computing lagging features
-    periods : periods to look back
-
-    """
-
-    if copy: df = df.copy()
-
-    new_col_prefix_tmp = new_col_prefix
-    unique_lagging_values = list(sorted({k for v in lagging_map.values() for k in v}))
-
-    if groupby_cols is None or len(groupby_cols) == 0:
-        for period in unique_lagging_values:
-            cols_to_lag = [k for k,v in lagging_map.items() if period in v]
-            df[[new_col_prefix_tmp + c for c in cols_to_lag]] = df[cols_to_lag].transform(lambda s: s.shift(periods=period))
-            new_col_prefix_tmp = new_col_prefix + str(period) + '_'
-    else:
-        for period in unique_lagging_values:
-            cols_to_lag = [k for k,v in lagging_map.items() if period in v]
-
-            df[[new_col_prefix_tmp + c for c in cols_to_lag]] = df.groupby(groupby_cols)[cols_to_lag]\
-                                                                .transform(lambda s: s.shift(periods=period))
-            new_col_prefix_tmp = new_col_prefix + str(period) + '_'
-    return df
-=======
->>>>>>> 607218e44551219d2aa08469d9fe08dc6e05db2a
