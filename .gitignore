@@ -1,0 +1,19 @@
+**csv
+**feather
+**pq
+**parquet
+**key
+**keys
+**keys.ini
+**.pkl
+**.pickle
+**.ipynb_checkpoints
+**catboost_info
+**.pyc
+**.idea
+<<<<<<< HEAD
+**venv/
+**__init__
+**__pycache__
+=======
+>>>>>>> 607218e44551219d2aa08469d9fe08dc6e05db2a
