@@ -24,12 +24,16 @@ from dev.scripts.trading_utils import * # run if on local machine
 from numerai.dev.scripts.numerai_utils import *
 from numerai.dev.configs.build_numerai_dataset_cfg import *
 
+
+###  pd options / configs ###
+
 pd.set_option('display.float_format', lambda x: '%.5f' % x)
 pd.set_option('display.max_columns', 10)
 config = ConfigParser()
 config.read('numerai/numerai_keys.ini')
 
-# Download Numerai data
+### connect to the numerai signals API ###
+
 napi = numerapi.SignalsAPI(config['KEYS']['NUMERAI_PUBLIC_KEY'], config['KEYS']['NUMERAI_SECRET_KEY'])
 
 ### download data ###
@@ -40,11 +44,14 @@ if DOWNLOAD_NUMERAI_COMPETITION_DATA:
 if LOAD_NUMERAI_COMPETITION_DATA:
     df_numerai_comp = dd.read_csv(DF_NUMERAI_COMP_TRAIN_PATH).compute()
 
-# Load eligible tickers
+
+### Load eligible tickers ###
+
 eligible_tickers = pd.Series(napi.ticker_universe(), name='ticker')
 
 ticker_map = pd.read_csv('https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv')
 ticker_map = ticker_map[ticker_map[TICKER_COL].isin(eligible_tickers)]
+
 if VERBOSE:
     print(f"Number of eligible tickers: {len(eligible_tickers)}")
     print(f"Number of eligible tickers in map: {len(ticker_map)}")
@@ -56,6 +63,7 @@ valid_tickers = [i for i in ticker_map['yahoo']
      and not str(i).lower()=='null' \
      and not str(i).lower()==''\
 ]
+
 if VERBOSE: print('tickers before:', ticker_map.shape) # before removing bad tickers
 ticker_map = ticker_map[ticker_map['yahoo'].isin(valid_tickers)]
 if VERBOSE: print('tickers after:', ticker_map.shape)
@@ -70,7 +78,6 @@ else:
     if DF_YAHOO_FILEPATH.lower().endswith('pq') or DF_YAHOO_FILEPATH.lower().endswith('parquet'):
         df_yahoo = dd.read_parquet(DF_YAHOO_FILEPATH,
                                     DASK_NPARTITIONS=DASK_NPARTITIONS).compute()
-        # df_yahoo = pd.read_parquet(DF_YAHOO_FILEPATH)
     elif DF_YAHOO_FILEPATH.lower().endswith('feather'):
         df_yahoo = dd.from_pandas(delayed(feather.read_dataframe)(DF_YAHOO_FILEPATH).compute(),
                                    npartitions=DASK_NPARTITIONS).compute()
@@ -83,17 +90,18 @@ if VERBOSE: print(df_yahoo.info())
 if CREATE_BLOOMBERG_TICKER_FROM_YAHOO or DOWNLOAD_YAHOO_DATA:
     if ('yahoo_ticker' not in df_yahoo.columns) or ('ticker' in df_yahoo.columns):
         df_yahoo.rename(columns={'ticker': 'yahoo_ticker'}, inplace=True)
-
     df_yahoo.loc[:, 'bloomberg_ticker'] = df_yahoo['yahoo_ticker'].map(dict(zip(ticker_map['yahoo'], ticker_map['bloomberg_ticker'])))
 
+### Ensure no [DATETIME_COL, TICKER_COL] are duplicated. If so then there is an issue. ###
 
-### Ensure no [DATETIME_COL, TICKER_COL] are duplicated. If so then there is an issue.
 datetime_ticker_cat = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[TICKER_COL].astype(str)).tolist()
+
 assert len(datetime_ticker_cat) == len(set(datetime_ticker_cat)), 'TICKER_COL and DATETIME_COL do not make a unique index!'
 del datetime_ticker_cat
 
 if SAVE_DF_YAHOO_TO_FEATHER:
     df_yahoo.to_feather(DF_YAHOO_OUTPATH)
+
 if SAVE_DF_YAHOO_TO_PARQUET:
     df_yahoo.to_parquet(DF_YAHOO_OUTPATH)
 
@@ -155,6 +163,7 @@ df_yahoo = create_rolling_features(df_yahoo, **ROLLING_FEATURES_PARAMS)
 ### Create move_iar features ###
 
 df_yahoo = df_yahoo.groupby(GROUPBY_COLS).apply(lambda df: calc_move_iar(df, iar_cols=IAR_COLS))
+
 
 ### Save df ###
 
