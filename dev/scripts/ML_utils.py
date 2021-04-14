@@ -130,9 +130,9 @@ class PreprocessFeatures(TransformerMixin):
         -------
     """
 
-    def __init__(self, preserve_vars, target, FE_pipeline_dict = None, remainder = 'drop', max_oh_cardinality = 11,
-                 detect_dtypes = True, numeric_features = [], oh_features = [], hc_features = [],
-                 overwrite_detection = True, n_jobs = -1, copy = True):
+    def __init__(self, preserve_vars, target, FE_pipeline_dict=None, remainder='drop', max_oh_cardinality=11,
+                 detect_dtypes=True, numeric_features=[], oh_features=[], hc_features=[],
+                 overwrite_detection=True, n_jobs=-1, copy=True):
 
         self.preserve_vars = preserve_vars
         self.target = target
@@ -162,7 +162,8 @@ class PreprocessFeatures(TransformerMixin):
 
         detected_numeric_vars = make_column_selector(dtype_include=np.number)(X[[i for i in X.columns if not i in self.preserve_vars + [self.target]]])
 
-        detected_oh_vars = [i for i in X.columns if X[i].unique().size < self.max_oh_cardinality if not i in self.preserve_vars + [self.target]]
+        detected_oh_vars = [i for i in X.loc[:, X.nunique() < self.max_oh_cardinality].columns if not i in self.preserve_vars + [self.target]]
+        # detected_oh_vars = [i for i in X.columns if X[i].unique().size < self.max_oh_cardinality if not i in self.preserve_vars + [self.target]]
 
         detected_hc_vars = X[[i for i in X.columns if not i in self.preserve_vars]] \
                             .select_dtypes(['object', 'category']) \

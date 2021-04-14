@@ -1,28 +1,46 @@
 import datetime
 
-DOWNLOAD_YAHOO_DATA = False
+DOWNLOAD_YAHOO_DATA = True
+
+DOWNLOAD_YFINANCE_DATA_PARAMS = {'start': '2000-01-01',
+                                 'intervals_to_download': ['1d', '1h'],
+                                 'join_method': 'outer',
+                                 'max_intraday_lookback_days': 363,
+                                 'n_chunks': 600,
+                                 'yfinance_threads': False}
+
+VERBOSE = True
+DASK_NPARTITIONS=16
+
+DATETIME_COL = 'date'
+TICKER_COL = 'bloomberg_ticker'
+
+TARGET_JOIN_METHOD = 'outer' # Do not set this to inner! An inner join will result in the rolling / lagging features not making any sense!
+TARGET_JOIN_COLS = [DATETIME_COL, TICKER_COL]
+GROUPBY_COLS = 'bloomberg_ticker'
+
+SAVE_DF_YAHOO_TO_FEATHER = True
+SAVE_DF_YAHOO_TO_PARQUET = False
+
+DF_YAHOO_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_yahoo_2021-04-07.pq'
+DF_YAHOO_OUTPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/df_numerai_' + str(datetime.datetime.today().date()) + '.feather'
+
+CREATE_BLOOMBERG_TICKER_FROM_YAHOO = False
+
 
 DOWNLOAD_NUMERAI_COMPETITION_DATA = False
 LOAD_NUMERAI_COMPETITION_DATA = False
 DF_NUMERAI_COMP_TRAIN_PATH = '/media/melgazar9/HDD_10TB/trading/data/numerai_dataset_255/numerai_training_data.csv' # local
 
-VERBOSE = False
+NUMERAI_TARGETS_URL = 'https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_train_val_bbg.csv'
 
-DF_YAHOO_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_yahoo_2021-04-07.pq'
-DF_YAHOO_OUTPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/df_numerai_' + str(datetime.datetime.today().date()) + '.feather'
-DASK_NPARTITIONS=16
+IAR_COLS = ['move_1d', 'high_move_1d', 'low_move_1d']
 
-CREATE_BLOOMBERG_TICKER_FROM_YAHOO = False
-SAVE_DF_YAHOO_TO_FEATHER = False
-SAVE_DF_YAHOO_TO_PARQUET = False
+SHIFT_TARGET_HL_UP_TO_PRED_FUTURE = False
 
-
-NUMERAI_TARGETS_ADDRESS = 'https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_train_val_bbg.csv'
-
-DROP_1D_NAS = False
-DROP_1H_NAS = False
-GROUPBY_COLS = 'bloomberg_ticker'
-
+RUN_CONDITIONAL_DROPNA = False
+DROPNA_PARAMS = {'col_contains': ['1d'],
+                 'exception_cols': ['target']}
 
 
 TARGETS_HL3_PARAMS = {'buy': 0.03,
@@ -31,7 +49,8 @@ TARGETS_HL3_PARAMS = {'buy': 0.03,
                       'stop': .01,
                       'move_col': 'move_pct_1d',
                       'lm_col': 'low_move_pct_1d',
-                      'hm_col': 'high_move_pct_1d'
+                      'hm_col': 'high_move_pct_1d',
+                      'target_suffix': 'target_HL3'
                       }
 
 TARGETS_HL5_PARAMS = {'strong_buy': 0.035,
@@ -42,16 +61,21 @@ TARGETS_HL5_PARAMS = {'strong_buy': 0.035,
                       'stop': .025,
                       'move_col': 'move_pct_1d',
                       'lm_col': 'low_move_pct_1d',
-                      'hm_col': 'high_move_pct_1d'
+                      'hm_col': 'high_move_pct_1d',
+                      'target_suffix': 'target_HL5'
                       }
 
-LAGGING_MAP = {'target': [1, 2, 3, 4, 5],
-               'target_HL3': [1, 2, 3, 4, 5],
-               'target_HL5': [1, 2, 3, 4, 5],
-               'volume_1d': [1, 2, 3, 4, 5],
-               'adj_close_1d': [1, 2, 3, 4, 5],
-               'move_1d':[1, 2, 3, 4, 5]
-               }
+LAGGING_FEATURES_PARAMS = {
+    'groupby_cols': GROUPBY_COLS,
+
+    'lagging_map': {'target': [1, 2, 3, 4, 5],
+                    'target_HL3': [1, 2, 3, 4, 5],
+                    'target_HL5': [1, 2, 3, 4, 5],
+                    'volume_1d': [1, 2, 3, 4, 5],
+                    'adj_close_1d': [1, 2, 3, 4, 5],
+                    'move_1d': [1, 2, 3, 4, 5]
+                    }
+    }
 
 
 ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},

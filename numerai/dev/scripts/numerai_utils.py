@@ -1,6 +1,10 @@
 from functools import reduce
 import pandas as pd
 import numpy as np
+import simplejson
+import yfinance
+import datetime
+
 
 def create_naive_features_single_symbol(df,
                                         symbol='',
@@ -18,19 +22,17 @@ def create_naive_features_single_symbol(df,
 
     df: Pandas-like / dask dataframe
         For the stacked yfinance data used for numerai, the syntax is <groupby('bloomberg_ticker').apply(func)>
-
     """
 
     if copy: df = df.copy()
+
+    ### custom features ###
 
     df['move' + new_col_suffix] = df[close_col] - df[open_col]
     df['move_pct' + new_col_suffix] = df['move' + new_col_suffix] / df[open_col]
     df['move_pct_change' + new_col_suffix] = df['move' + new_col_suffix].pct_change()
     df['open_minus_prev_close' + new_col_suffix] = df[open_col] - df[close_col].shift()
     df['prev_close_pct_chg' + new_col_suffix] = df['move' + new_col_suffix] / df[close_col].shift()
-
-    df['range' + new_col_suffix] = df[high_col] - df[low_col]
-    df['range_pct_change' + new_col_suffix] = df['range' + new_col_suffix].pct_change()
 
     df['high_move' + new_col_suffix] = df[high_col] - df[open_col]
     df['high_move_pct' + new_col_suffix] = df['high_move' + new_col_suffix] / df[open_col]
@@ -40,16 +42,43 @@ def create_naive_features_single_symbol(df,
     df['low_move_pct' + new_col_suffix] = df['low_move' + new_col_suffix] / df[open_col]
     df['low_move_pct_change' + new_col_suffix] = df['low_move' + new_col_suffix].pct_change()
 
-    df['volume_diff' + new_col_suffix] = df[volume_col] - df[volume_col].shift()
-    df['volume_pct_change' + new_col_suffix] = df[volume_col].pct_change()
-
     df['close_minus_low' + new_col_suffix] = df[close_col] - df[low_col]
     df['high_minus_close' + new_col_suffix] = df[high_col] - df[close_col]
 
     df['prev_close_minus_low_minus' + new_col_suffix] = df[close_col].shift() - df[low_col]
     df['high_minus_prev_close' + new_col_suffix] = df[high_col] - df[close_col].shift()
 
+    ### diffs ###
+
+    df['open_diff' + new_col_suffix] = df[open_col].diff()
+    df['high_diff' + new_col_suffix] = df[high_col].diff()
+    df['low_diff' + new_col_suffix] = df[low_col].diff()
+    df['close_diff' + new_col_suffix] = df[close_col].diff()
+    df['volume_diff' + new_col_suffix] = df[volume_col].diff()
+
+    ### pct_change ###
+
+    df['open_pct_change' + new_col_suffix] = df[open_col].pct_change()
+    df['high_pct_change' + new_col_suffix] = df[high_col].pct_change()
+    df['low_pct_change' + new_col_suffix] = df[low_col].pct_change()
+    df['close_pct_change' + new_col_suffix] = df[close_col].pct_change()
+    df['volume_pct_change' + new_col_suffix] = df[volume_col].pct_change()
+
+    ### pct_change of diff (e.g. second derivative of the diff)
+
+    df['open_diff_pct_change' + new_col_suffix] = df['open_diff' + new_col_suffix].pct_change()
+    df['high_diff_pct_change' + new_col_suffix] = df['high_diff' + new_col_suffix].pct_change()
+    df['low_diff_pct_change' + new_col_suffix] = df['low_diff' + new_col_suffix].pct_change()
+    df['close_diff_pct_change' + new_col_suffix] = df['close_diff' + new_col_suffix].pct_change()
+    df['volume_diff_pct_change' + new_col_suffix] = df['volume_diff' + new_col_suffix].pct_change()
+
+    ### range features ###
+    df['range' + new_col_suffix] = df[high_col] - df[low_col]
+    df['range_pct_change' + new_col_suffix] = df['range' + new_col_suffix].pct_change()
+
     return df
+
+
 
 
 class CreateTargets():
@@ -272,11 +301,194 @@ def create_rolling_features(df,
     return df
 
 
-def drop_suffix_nas(df, col_suffix='1d', id_cols=['date', 'bloomberg_ticker']):
-    df_ids = df[[col for col in df.columns \
-                 if col.endswith(col_suffix) \
-                 or col in id_cols] \
-        ].dropna()[id_cols].isin(df[id_cols])
 
-    df = df[df[id_cols].isin(df_ids[id_cols])]
+def drop_nas(df, col_contains, exception_cols=[], how=None, copy=True):
+
+    """
+    Description:
+    ___________
+    The goal of this function is to conditionally drop null rows
+
+    Parameters
+    __________
+
+    df: pandas df
+    col_contains: str or list of strings that select columns if the column contains this string - drop NAs based on these columns and exception_cols
+    exception_cols: list or str that will not drop that row if this col is non-null
+        example: All values are NA in col_contains, but 'target' is passed to exception_cols, and target is non-null,
+                 In this case, since 'target' (e.g. exception_cols) is non-null, that row will not be dropped
+    how: str passed to pd.dropna() - default is None - if None, the function will use 'all' if exception_cols are non-empty.
+         If exception cols are empty it uses 'any'. This can be overwritten.
+    copy: bool - if True make a copy of the df before applying transformations
+
+    Returns
+    _______
+
+    pandas df with new subsetted rows
+    """
+
+    if copy: df = df.copy()
+
+    if isinstance(col_contains, str):
+        col_contains = [col_contains]
+    if isinstance(exception_cols, str):
+        exception_cols = [exception_cols]
+
+    assert isinstance(col_contains, list), 'col_contains must be a list or str!'
+    assert isinstance(exception_cols, list), 'exception_cols must be a list or str!'
+
+    selected_cols = list(set([col for col in df.columns for j in col_contains for k in exception_cols if j in col] + exception_cols))
+
+    if len(exception_cols) and how is None:
+        how = 'all'
+    elif len(exception_cols) == 0 and how is None:
+        how='any'
+
+    df.dropna(how=how, subset=selected_cols, inplace=True)
+
     return df
+
+
+
+def calc_move_iar(df, iar_cols, iar_suffix='_iar', copy=True):
+
+    if copy: df = df.copy()
+
+    assert isinstance(iar_cols, str) or isinstance(iar_cols, list), 'iar_cols must be a str or list!'
+
+    upmove_iar = df[iar_cols].transform(lambda x: x.cumsum().sub(x.cumsum().mask(x >= 0).ffill(), fill_value=0), axis=0).replace(0, np.nan)
+    downmove_iar = df[iar_cols].transform(lambda x: x.cumsum().sub(x.cumsum().mask(x <= 0).ffill(), fill_value=0), axis=0).replace(0, np.nan)
+
+    if isinstance(iar_cols, str):
+        new_iar_cols = iar_cols + iar_suffix
+    else:
+        new_iar_cols = [i + iar_suffix for i in iar_cols]
+
+    df[new_iar_cols] = upmove_iar.fillna(downmove_iar).ffill()
+
+    return df
+
+
+def calc_trend(df, iar_cols, iar_suffix='_iar', trend_suffix='_trend', flat_threshold=0.005, copy=True):
+
+    if copy: df = df.copy()
+
+    new_iar_colname = iar_cols + iar_suffix
+    trend_colname = iar_cols + trend_suffix
+
+    df.loc[df[iar_cols] > 0, trend_colname] = 'up'
+    df.loc[df[iar_cols] < 0, trend_colname] = 'down'
+    df.loc[np.abs(df[iar_cols]) <= flat_threshold, trend_colname] = 'flat'
+
+    return df
+
+
+def download_yfinance_data(tickers,
+                           intervals_to_download=['1d', '1h'],
+                           num_workers=1,
+                           join_method='outer',
+                           max_intraday_lookback_days=363,
+                           n_chunks=600,
+                           yfinance_threads=False,
+                           **yfinance_params):
+    """
+    Parameters
+    __________
+
+    See yfinance.download docs for a detailed description of yfinance parameters
+
+    tickers : list of tickers to pass to yfinance.download - it will be parsed to be in the format "AAPL MSFT FB"
+    intervals_to_download : list of intervals to download OHLCV data for each stock (e.g. ['1w', '1d', '1h'])
+    num_workers : number of threads used to download the data
+        so far only 1 thread is implemented
+    join_method : can be 'inner', 'left', 'right' or 'outer'
+        if 'outer' then all dates will be present
+        if 'left' then all dates from the left table will be present
+        if 'right' then all dates from the right table will be present
+        if 'inner' then all dates must match for each ticker
+    **yfinance_params : dict - passed to yfinance.dowload(yfinance_params)
+        set threads = True for faster performance, but tickers will fail, scipt may hang
+        set threads = False for slower performance, but more tickers will succeed
+
+    NOTE: passing some intervals return unreliable stock data (e.g. '3mo' returns many NA data points when they should not be NA)
+    """
+
+    if len(yfinance_params) == 0:
+        yfinance_params = {}
+
+    yfinance_params['threads'] = yfinance_threads
+    yfinance_params2 = yfinance_params.copy() # create a copy for min / hour pulls because the start date can only go back 60 days
+
+    if num_workers == 1:
+
+        list_of_dfs = []
+
+        for i in intervals_to_download:
+
+            yfinance_params['interval'] = i
+
+            if i.endswith('m') or i.endswith('h'): # min or hr
+
+                yfinance_params2['interval'] = i
+                yfinance_params2['start'] = str(datetime.datetime.today().date() - datetime.timedelta(days=max_intraday_lookback_days))
+
+                if yfinance_params['threads'] == True:
+                    df_i = yfinance.download(tickers, **yfinance_params2).\
+                            stack().\
+                            add_suffix('_' + str(i)).\
+                            reset_index(level=1).\
+                            rename(columns={'level_1': 'ticker'})
+                else:
+
+                    ticker_chunks = [' '.join(tickers[i:i+n_chunks]) for i in range(0, len(tickers), n_chunks)]
+
+                    chunk_dfs_lst = []
+                    for chunk in ticker_chunks:
+                        try:
+                            temp_df = yfinance.download(chunk, **yfinance_params2).\
+                                        stack().\
+                                        add_suffix('_' + str(i)).\
+                                        reset_index(level=1).\
+                                        rename(columns={'level_1': 'ticker'})
+                            chunk_dfs_lst.append(temp_df)
+                        except simplejson.errors.JSONDecodeError:
+                            pass
+
+                    df_i = pd.concat(chunk_dfs_lst)
+
+                df_i = df_i.pivot_table(index=df_i.index.date, columns=['ticker', df_i.index.hour]).stack(level=1)
+                df_i.columns = list(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in df_i.columns.tolist()]).str.replace(' ', '_'))
+
+            else:
+                if yfinance_params['threads'] == True:
+                    df_i = yfinance.download(tickers, **yfinance_params).\
+                            stack().\
+                            add_suffix('_' + str(i))
+                else:
+                    ticker_chunks = [' '.join(tickers[i:i+n_chunks]) for i in range(0, len(tickers), n_chunks)]
+
+                    chunk_dfs_lst = []
+                    for chunk in ticker_chunks:
+                        try:
+                            temp_df = yfinance.download(chunk, **yfinance_params).\
+                                        stack().\
+                                        add_suffix('_' + str(i))
+                            chunk_dfs_lst.append(temp_df)
+                        except simplejson.errors.JSONDecodeError:
+                            pass
+                    df_i = pd.concat(chunk_dfs_lst)
+
+                df_i.columns = [col.replace(' ', '_').lower() for col in df_i.columns]
+
+            df_i.index.names = ['date', 'ticker']
+
+            list_of_dfs.append(df_i)
+
+
+        df_yahoo = reduce(lambda x, y: pd.merge(x, y, how=join_method, left_index=True, right_index=True), list_of_dfs)
+#         df_yahoo.reset_index(level=1, inplace=True)
+
+    else:
+        return 'multi-threading not implemented yet. Set num_workers to 1.'
+
+    return df_yahoo

@@ -38,9 +38,9 @@ class PullHistoricalData():
     Parameters
     __________
 
-    api_headers : dictionary of alpaca api headers - it should contain the api key
-    symbols : a list of symbols to pull - currently the symbols are limited to stocks only
-    copy : create a copy of the dataframe before running each function (default True - setting to False may overwrite df while running certain functions)
+    api_headers: dictionary of alpaca api headers - it should contain the api key
+    symbols: a list of symbols to pull - currently the symbols are limited to stocks only
+    copy: create a copy of the dataframe before running each function (default True - setting to False may overwrite df while running certain functions)
 
     """
 
@@ -242,7 +242,7 @@ class PullHistoricalData():
 
                 for i in range(len(list(indicator_dict.keys())))[1:]:
 
-                    # inputs: kwarg examples: {'get_macd' : {'interval' : 'daily', 'time_period' : 999999, 'series_type' : 'close'}}
+                    # inputs: kwarg examples: {'get_macd': {'interval': 'daily', 'time_period': 999999, 'series_type': 'close'}}
 
                     try:
 
@@ -280,10 +280,15 @@ class PullHistoricalData():
 
 
 def timeseries_split(df,
-                      train_prop=.7,
-                      val_prop=.15,
-                      feature_startswith=['feature', 'era'],
-                      target_name='target'):
+                     train_prop=.7,
+                     val_prop=.15,
+                     feature_prefixes=[],
+                     feature_suffixes=[],
+                     target_name='target',
+                     return_single_df=True,
+                     split_colname='dataset_split',
+                     sort_df_params={},
+                     copy=True):
 
     """
 
@@ -291,40 +296,61 @@ def timeseries_split(df,
 
     Parameters
     ----------
-    df : a pandas (compatible) dataframe
-
-    train_prop : float - proportion of train orders assuming the data is sorted in ascending order
-        example : 0.7 means 70% of the df will train orders
-
-    val_prop : float - proportion of val orders
+    df: a pandas (compatible) dataframe
+    train_prop: float - proportion of train orders assuming the data is sorted in ascending order
+        example: 0.7 means 70% of the df will train orders
+    val_prop: float - proportion of val orders
         e.g. 0.1 means 10% of the df will be val orders, where the val orders come after the train orders
+    feature_prefixes: str or list - the feature name starts with this string to be considered a feature
+    target_name: str - name of the target variable
+    return_single_df: If true then a new column <split_colname> will be concatenated to the df with 'train', 'val', or 'test'
+    split_colname: If return_single_df is True, then this is the name of the new split col
+    sort_df_params: Set to False or empty dict to not sort the df by any column.
+        To sort, specify as dict the input params to either df.sort_index or df.sort_values.
 
-    feature_startswith : str or list - the feature name starts with this string to be considered a feature
-
-    target_name : str - name of the target variable
 
     Returns
     -------
-    a tuple of dataframes : X_train, y_train, X_val, y_val, X_test, y_test
+
+    Either a tuple of dataframes: X_train, y_train, X_val, y_val, X_test, y_test
+      Or the same df with a new <split_colname> having ['train', 'val', 'test'] or 'None' populated
 
     """
 
-    if isinstance(feature_startswith, list):
-        feature_list = [f for f in df_train.columns for i in range(len(feature_startswith)) if f.startswith(feature_startswith[i])]
+    if copy: df = df.copy()
+
+    if isinstance(feature_prefixes, list):
+        feature_prefix_list = [f for f in df.columns for i in range(len(feature_prefixes)) if f.startswith(feature_prefixes[i])]
+        feature_list = list(set([f for f in df.columns for i in range(len(feature_suffixes)) if f.endswith(feature_suffixes[i])] + feature_prefix_list))
     else:
-        assert isinstance(feature_startswith, str), 'feature_startswith needs to be a string or list'
-        feature_list = [f for f in df_train.columns if f.startswith(feature_startswith)]
+        assert isinstance(feature_prefixes, str), 'feature_prefixes needs to be a string or list'
+        feature_prefix_list = [f for f in df.columns if f.startswith(feature_prefixes)]
+        feature_list = list(set([f for f in df.columns if f.endswith(feature_suffixes)] + feature_prefix_list))
 
-    X_train = df.iloc[0:int(np.floor(len(df)*train_prop))][feature_list]
-    y_train = df.iloc[0:int(np.floor(len(df)*train_prop))][target_name]
+    if sort_df_params:
+        if list(sort_df_params.keys())[0].lower() == 'index' and not 'index' in df.columns:
+            df.sort_index(**sort_df_params)
+        else:
+            df.sort_values(**sort_df_params)
 
-    X_val = df.iloc[int(np.floor(len(df)*train_prop)):int(np.floor(len(df)*(1 - val_prop)))][feature_list]
-    y_val = df.iloc[int(np.floor(len(df)*train_prop)):int(np.floor(len(df)*(1 - val_prop)))][target_name]
+    if return_single_df:
+        df.loc[0:int(np.floor(len(df)*train_prop)), split_colname] = 'train'
+        df.loc[int(np.floor(len(df)*train_prop)): int(np.floor(len(df)*(1 - val_prop))), split_colname] = 'val'
+        df.loc[int(np.floor(len(df)*(1 - val_prop))):, split_colname] = 'test'
 
-    X_test = df.iloc[int(np.floor(len(df)*(1 - val_prop))):][feature_list]
-    y_test = df.iloc[int(np.floor(len(df)*(1 - val_prop))):][target_name]
+        return df
 
-    return X_train, y_train, X_val, y_val, X_test, y_test
+    else:
+        X_train = df.iloc[0:int(np.floor(len(df)*train_prop))][feature_list]
+        y_train = df.iloc[0:int(np.floor(len(df)*train_prop))][target_name]
+
+        X_val = df.iloc[int(np.floor(len(df)*train_prop)):int(np.floor(len(df)*(1 - val_prop)))][feature_list]
+        y_val = df.iloc[int(np.floor(len(df)*train_prop)):int(np.floor(len(df)*(1 - val_prop)))][target_name]
+
+        X_test = df.iloc[int(np.floor(len(df)*(1 - val_prop))):][feature_list]
+        y_test = df.iloc[int(np.floor(len(df)*(1 - val_prop))):][target_name]
+
+        return X_train, y_train, X_val, y_val, X_test, y_test
 
 
 
@@ -442,7 +468,7 @@ class CreateFeatures():
                     move_iar = move
                     lst.append(move_iar)
                     prev_move_iar = move_iar
-        return pd.DataFrame(lst, index=self.df_symbols.index, columns=[feature]).rename(columns={feature : feature + '_iar'})
+        return pd.DataFrame(lst, index=self.df_symbols.index, columns=[feature]).rename(columns={feature: feature + '_iar'})
 
     def pos_neg_move(self, feature, min_move_up, copy = True):
         if self.copy: self.df_symbols = self.df_symbols.copy()
@@ -482,7 +508,7 @@ class CreateTargets():
         Parameters
         __________
 
-        df_symbols : pandas df where features are like AAPL_open, TSLA_close, etc...
+        df_symbols: pandas df where features are like AAPL_open, TSLA_close, etc...
 
 
         Note: to compute the target based on pct, pass the pct column names into the individual functions
