@@ -1,5 +1,19 @@
 import datetime
 
+### general params ###
+
+VERBOSE = True
+DASK_NPARTITIONS=16
+
+DATETIME_COL = 'date'
+TICKER_COL = 'bloomberg_ticker'
+
+CREATE_BLOOMBERG_TICKER_FROM_YAHOO = True
+
+SHIFT_TARGET_HL_UP_TO_PRED_FUTURE = False
+
+### download_yfinance_data params ###
+
 DOWNLOAD_YAHOO_DATA = True
 
 DOWNLOAD_YFINANCE_DATA_PARAMS = {'start': '2000-01-01',
@@ -9,15 +23,16 @@ DOWNLOAD_YFINANCE_DATA_PARAMS = {'start': '2000-01-01',
                                  'n_chunks': 600,
                                  'yfinance_threads': False}
 
-VERBOSE = True
-DASK_NPARTITIONS=16
 
-DATETIME_COL = 'date'
-TICKER_COL = 'bloomberg_ticker'
+### target params ###
 
 TARGET_JOIN_METHOD = 'outer' # Do not set this to inner! An inner join will result in the rolling / lagging features not making any sense!
 TARGET_JOIN_COLS = [DATETIME_COL, TICKER_COL]
 GROUPBY_COLS = 'bloomberg_ticker'
+
+NUMERAI_TARGETS_URL = 'https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_train_val_bbg.csv'
+
+### path params ###
 
 SAVE_DF_YAHOO_TO_FEATHER = True
 SAVE_DF_YAHOO_TO_PARQUET = False
@@ -25,23 +40,19 @@ SAVE_DF_YAHOO_TO_PARQUET = False
 DF_YAHOO_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_yahoo_2021-04-07.pq'
 DF_YAHOO_OUTPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/df_numerai_' + str(datetime.datetime.today().date()) + '.feather'
 
-CREATE_BLOOMBERG_TICKER_FROM_YAHOO = False
-
+### numerai_competition_data params ###
 
 DOWNLOAD_NUMERAI_COMPETITION_DATA = False
 LOAD_NUMERAI_COMPETITION_DATA = False
 DF_NUMERAI_COMP_TRAIN_PATH = '/media/melgazar9/HDD_10TB/trading/data/numerai_dataset_255/numerai_training_data.csv' # local
 
-NUMERAI_TARGETS_URL = 'https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_train_val_bbg.csv'
-
-IAR_COLS = ['move_1d', 'high_move_1d', 'low_move_1d']
-
-SHIFT_TARGET_HL_UP_TO_PRED_FUTURE = False
+### drop_nas params ###
 
 RUN_CONDITIONAL_DROPNA = False
 DROPNA_PARAMS = {'col_contains': ['1d'],
                  'exception_cols': ['target']}
 
+### CreateTargets params ###
 
 TARGETS_HL3_PARAMS = {'buy': 0.03,
                       'sell': 0.03,
@@ -65,6 +76,9 @@ TARGETS_HL5_PARAMS = {'strong_buy': 0.035,
                       'target_suffix': 'target_HL5'
                       }
 
+
+### lagging_features params ###
+
 LAGGING_FEATURES_PARAMS = {
     'groupby_cols': GROUPBY_COLS,
 
@@ -78,6 +92,8 @@ LAGGING_FEATURES_PARAMS = {
     }
 
 
+### rolling_features params ###
+
 ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},
                            'rolling_fn': 'mean',
                            'ewm_fn': 'mean',
@@ -88,3 +104,7 @@ ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},
                            'groupby_cols': GROUPBY_COLS,
                            'create_diff_cols': True
                            }
+
+### move_iar params ###
+
+IAR_COLS = ['move_1d', 'high_move_1d', 'low_move_1d']
