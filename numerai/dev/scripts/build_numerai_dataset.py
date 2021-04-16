@@ -97,7 +97,7 @@ datetime_ticker_cat = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[TICKE
 assert len(datetime_ticker_cat) == len(set(datetime_ticker_cat)), 'TICKER_COL and DATETIME_COL do not make a unique index!'
 del datetime_ticker_cat
 
-df_yahoo.sort_values(by = [DATETIME_COL, TICKER_COL], inplace=True)
+df_yahoo.sort_values(by=[DATETIME_COL, TICKER_COL], inplace=True)
 
 if DF_INIT_FILEPATH.endswith('feather'):
     if 'date' in df_yahoo.index.names or 'ticker' in df_yahoo.index.names:
@@ -122,6 +122,7 @@ if VERBOSE: targets['target'].value_counts(), targets['target'].value_counts(nor
 
 df_yahoo = pd.merge(df_yahoo, targets, on=TARGET_JOIN_COLS, how=TARGET_JOIN_METHOD)
 
+del targets # save memory
 TICKERS = df_yahoo[TICKER_COL].unique().tolist()
 
 ### conditionally drop NAs ###
@@ -129,10 +130,9 @@ TICKERS = df_yahoo[TICKER_COL].unique().tolist()
 if RUN_CONDITIONAL_DROPNA:
     df_yahoo = drop_nas(df_yahoo, **DROPNA_PARAMS)
 
-
 ### create naive features ###
 
-df_yahoo = df_yahoo.groupby(GROUPBY_COLS, group_keys=False).apply(create_naive_features_single_symbol) # Create naive features (e.g. moves, ranges, etc...)
+df_yahoo = df_yahoo.groupby(TICKER_COL, group_keys=False).apply(create_naive_features_single_symbol) # Create naive features (e.g. moves, ranges, etc...)
 
 ### create manual targets ###
 
@@ -147,8 +147,8 @@ if VERBOSE:
 ### For each ticker, shift the target backwards one timestamp, where each row is the unit of measure (e.g. each row is a day) ###
 
 if SHIFT_TARGET_HL_UP_TO_PRED_FUTURE:
-    df_yahoo[TARGETS_HL3_PARAMS['target_suffix']] = df_yahoo.groupby(GROUPBY_COLS)[TARGETS_HL3_PARAMS['target_suffix']].transform(lambda col: col.shift(-1))
-    df_yahoo[TARGETS_HL5_PARAMS['target_suffix']] = df_yahoo.groupby(GROUPBY_COLS)[TARGETS_HL5_PARAMS['target_suffix']].transform(lambda col: col.shift(-1))
+    df_yahoo[TARGETS_HL3_PARAMS['target_suffix']] = df_yahoo.groupby(TICKER_COL)[TARGETS_HL3_PARAMS['target_suffix']].transform(lambda col: col.shift(-1))
+    df_yahoo[TARGETS_HL5_PARAMS['target_suffix']] = df_yahoo.groupby(TICKER_COL)[TARGETS_HL5_PARAMS['target_suffix']].transform(lambda col: col.shift(-1))
 
 ### Create lagging features ###
 
@@ -162,7 +162,7 @@ df_yahoo = create_rolling_features(df_yahoo, **ROLLING_FEATURES_PARAMS)
 
 ### Create move_iar features ###
 
-df_yahoo = df_yahoo.groupby(GROUPBY_COLS, group_keys=False).apply(lambda df: calc_move_iar(df, iar_cols=IAR_COLS))
+df_yahoo = df_yahoo.groupby(TICKER_COL, group_keys=False).apply(lambda df: calc_move_iar(df, iar_cols=IAR_COLS))
 
 
 ### Save df ###

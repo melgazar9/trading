@@ -14,21 +14,21 @@ SHIFT_TARGET_HL_UP_TO_PRED_FUTURE = False
 
 ### download_yfinance_data params ###
 
-DOWNLOAD_NUMERAI_DATA = True
 DOWNLOAD_YAHOO_DATA = False
+
 DOWNLOAD_YFINANCE_DATA_PARAMS = {'intervals_to_download': ['1d', '1h'],
                                  'join_method': 'outer',
                                  'max_intraday_lookback_days': 363,
                                  'n_chunks': 500,
                                  'yfinance_params': {'start': '1990-01-01', 'threads': False}}
 
+# the below filepath reads the df into memory if DOWNLOAD_YAHOO_DATA == False
 DF_YAHOO_READPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_yahoo_init_2021-04-16.feather'
 
 ### target params ###
 
 TARGET_JOIN_METHOD = 'outer' # Do not set this to inner! An inner join will result in the rolling / lagging features not making any sense!
 TARGET_JOIN_COLS = [DATETIME_COL, TICKER_COL]
-GROUPBY_COLS = 'bloomberg_ticker'
 
 NUMERAI_TARGETS_URL = 'https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_train_val_bbg.csv'
 
@@ -48,6 +48,7 @@ DF_NUMERAI_COMP_TRAIN_PATH = '/media/melgazar9/HDD_10TB/trading/data/numerai_dat
 RUN_CONDITIONAL_DROPNA = False
 DROPNA_PARAMS = {'col_contains': ['1d'],
                  'exception_cols': ['target']}
+
 
 ### CreateTargets params ###
 
@@ -77,7 +78,7 @@ TARGETS_HL5_PARAMS = {'strong_buy': 0.035,
 ### lagging_features params ###
 
 LAGGING_FEATURES_PARAMS = {
-    'groupby_cols': GROUPBY_COLS,
+    'groupby_cols': TICKER_COL,
 
     'lagging_map': {'target': [1, 2, 3, 4, 5],
                     'target_HL3': [1, 2, 3, 4, 5],
@@ -98,7 +99,7 @@ ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},
                            'rolling_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target', 'prev1_target_HL5'],
                            'ewm_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target', 'prev1_target_HL5'],
                            'join_method': 'outer',
-                           'groupby_cols': GROUPBY_COLS,
+                           'groupby_cols': TICKER_COL,
                            'create_diff_cols': True
                            }
 
