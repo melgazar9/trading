@@ -15,12 +15,14 @@ SHIFT_TARGET_HL_UP_TO_PRED_FUTURE = False
 ### download_yfinance_data params ###
 
 DOWNLOAD_NUMERAI_DATA = True
-
+DOWNLOAD_YAHOO_DATA = False
 DOWNLOAD_YFINANCE_DATA_PARAMS = {'intervals_to_download': ['1d', '1h'],
                                  'join_method': 'outer',
                                  'max_intraday_lookback_days': 363,
                                  'n_chunks': 500,
                                  'yfinance_params': {'start': '1990-01-01', 'threads': False}}
+
+DF_YAHOO_READPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_yahoo_init_2021-04-16.feather'
 
 ### target params ###
 

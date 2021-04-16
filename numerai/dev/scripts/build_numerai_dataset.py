@@ -75,11 +75,11 @@ if VERBOSE: print('tickers after:', ticker_map.shape)
 if DOWNLOAD_YAHOO_DATA:
     df_yahoo = download_yfinance_data(list(ticker_map['yahoo']), **DOWNLOAD_YFINANCE_DATA_PARAMS) # all valid yahoo tickers
 else: # read in file
-    if DF_YAHOO_FILEPATH.lower().endswith('pq') or DF_YAHOO_FILEPATH.lower().endswith('parquet'):
-        df_yahoo = dd.read_parquet(DF_YAHOO_FILEPATH,
+    if DF_YAHOO_READPATH.lower().endswith('pq') or DF_YAHOO_READPATH.lower().endswith('parquet'):
+        df_yahoo = dd.read_parquet(DF_YAHOO_READPATH,
                                     DASK_NPARTITIONS=DASK_NPARTITIONS).compute()
-    elif DF_YAHOO_FILEPATH.lower().endswith('feather'):
-        df_yahoo = dd.from_pandas(delayed(feather.read_dataframe)(DF_YAHOO_FILEPATH).compute(),
+    elif DF_YAHOO_READPATH.lower().endswith('feather'):
+        df_yahoo = dd.from_pandas(delayed(feather.read_dataframe)(DF_YAHOO_READPATH).compute(),
                                    npartitions=DASK_NPARTITIONS).compute()
 
 if VERBOSE: print(df_yahoo.info())
