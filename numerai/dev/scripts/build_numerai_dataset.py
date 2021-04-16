@@ -89,6 +89,7 @@ if CREATE_BLOOMBERG_TICKER_FROM_YAHOO or DOWNLOAD_YAHOO_DATA:
         df_yahoo.rename(columns={'ticker': 'yahoo_ticker'}, inplace=True)
     df_yahoo.loc[:, 'bloomberg_ticker'] = df_yahoo['yahoo_ticker'].map(dict(zip(ticker_map['yahoo'], ticker_map['bloomberg_ticker'])))
 
+
 ### Ensure no [DATETIME_COL, TICKER_COL] are duplicated. If so then there is an issue. ###
 
 datetime_ticker_cat = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[TICKER_COL].astype(str)).tolist()
@@ -98,14 +99,13 @@ del datetime_ticker_cat
 
 df_yahoo.sort_values(by = [DATETIME_COL, TICKER_COL], inplace=True)
 
-if SAVE_DF_YAHOO_TO_FEATHER:
+if DF_INIT_FILEPATH.endswith('feather'):
     if 'date' in df_yahoo.index.names or 'ticker' in df_yahoo.index.names:
-        df_yahoo.reset_index().to_feather(DF_YAHOO_OUTPATH)
+        df_yahoo.reset_index().to_feather(DF_INIT_FILEPATH)
     else:
-        df_yahoo.reset_index(drop=True).to_feather(DF_YAHOO_OUTPATH)
-
-if SAVE_DF_YAHOO_TO_PARQUET:
-    df_yahoo.to_parquet(DF_YAHOO_OUTPATH)
+        df_yahoo.reset_index(drop=True).to_feather(DF_YAHOO_FILEPATH)
+elif DF_INIT_FILEPATH.endswith('pq') or DF_INIT_FILEPATH.endswith('parquet'):
+    df_yahoo.to_parquet(DF_INIT_FILEPATH)
 
 targets = pd.read_csv(NUMERAI_TARGETS_URL)\
             .assign(date=lambda df: pd.to_datetime(df['friday_date'], format='%Y%m%d'))
@@ -167,10 +167,13 @@ df_yahoo = df_yahoo.groupby(GROUPBY_COLS, group_keys=False).apply(lambda df: cal
 
 ### Save df ###
 
-if DF_YAHOO_OUTPATH.endswith('pq') or DF_YAHOO_OUTPATH.endswith('parquet'):
-    df_yahoo.to_parquet(DF_YAHOO_OUTPATH)
-elif DF_YAHOO_OUTPATH.endswith('feather'):
-    df_yahoo.reset_index(drop=True).to_feather(DF_YAHOO_OUTPATH)
+if DF_BUILD_FILEPATH.endswith('feather'):
+    if 'date' in df_yahoo.index.names or 'ticker' in df_yahoo.index.names:
+        df_yahoo.reset_index().to_feather(DF_BUILD_FILEPATH)
+    else:
+        df_yahoo.reset_index(drop=True).to_feather(DF_BUILD_FILEPATH)
+elif DF_BUILD_FILEPATH.endswith('pq') or DF_BUILD_FILEPATH.endswith('parquet'):
+    df_yahoo.to_parquet(DF_BUILD_FILEPATH)
 
 end_time = time.time()
 

@@ -14,7 +14,7 @@ SHIFT_TARGET_HL_UP_TO_PRED_FUTURE = False
 
 ### download_yfinance_data params ###
 
-DOWNLOAD_YAHOO_DATA = True
+DOWNLOAD_NUMERAI_DATA = True
 
 DOWNLOAD_YFINANCE_DATA_PARAMS = {'intervals_to_download': ['1d', '1h'],
                                  'join_method': 'outer',
@@ -32,11 +32,8 @@ NUMERAI_TARGETS_URL = 'https://numerai-signals-public-data.s3-us-west-2.amazonaw
 
 ### path params ###
 
-SAVE_DF_YAHOO_TO_FEATHER = True
-SAVE_DF_YAHOO_TO_PARQUET = False
-
-DF_YAHOO_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_yahoo_2021-04-07.pq'
-DF_YAHOO_OUTPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/df_numerai_' + str(datetime.datetime.today().date()) + '.feather'
+DF_INIT_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_numerai_init_' + str(datetime.datetime.today().date()) + '.feather'
+DF_BUILD_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather'
 
 ### numerai_competition_data params ###
 
