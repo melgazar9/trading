@@ -13,8 +13,7 @@ def download_yfinance_data(tickers,
                            join_method='outer',
                            max_intraday_lookback_days=363,
                            n_chunks=600,
-                           yfinance_threads=False,
-                           **yfinance_params):
+                           yfinance_params={}):
     """
 
     Parameters
@@ -38,11 +37,8 @@ def download_yfinance_data(tickers,
     NOTE: passing some intervals return unreliable stock data (e.g. '3mo' returns many NA data points when they should not be NA)
     """
 
-    if len(yfinance_params) == 0:
-        yfinance_params = {}
-
-    yfinance_params['threads'] = yfinance_threads
-    yfinance_params2 = yfinance_params.copy() # create a copy for min / hour pulls because the start date can only go back 60 days
+    intraday_lookback_days = datetime.datetime.today().date() - datetime.timedelta(days=max_intraday_lookback_days)
+    start_date = yfinance_params['start']
 
     if num_workers == 1:
 
@@ -52,68 +48,121 @@ def download_yfinance_data(tickers,
 
             yfinance_params['interval'] = i
 
-            if i.endswith('m') or i.endswith('h'): # min or hr
+            if (i.endswith('m') or i.endswith('h')) and (pd.to_datetime(yfinance_params['start']) < intraday_lookback_days):
+                yfinance_params['start'] = str(intraday_lookback_days)
 
-                yfinance_params2['interval'] = i
-                yfinance_params2['start'] = str(datetime.datetime.today().date() - datetime.timedelta(days=max_intraday_lookback_days))
+            if yfinance_params['threads'] == True:
 
-                if yfinance_params['threads'] == True:
-                    df_i = yfinance.download(tickers, **yfinance_params2).\
-                            stack().\
-                            add_suffix('_' + str(i)).\
-                            reset_index(level=1).\
-                            rename(columns={'level_1': 'ticker'})
-                else:
-
-                    ticker_chunks = [' '.join(tickers[i:i+n_chunks]) for i in range(0, len(tickers), n_chunks)]
-
-                    chunk_dfs_lst = []
-                    for chunk in ticker_chunks:
-                        try:
-                            temp_df = yfinance.download(chunk, **yfinance_params2).\
-                                        stack().\
-                                        add_suffix('_' + str(i)).\
-                                        reset_index(level=1).\
-                                        rename(columns={'level_1': 'ticker'})
-                            chunk_dfs_lst.append(temp_df)
-                        except simplejson.errors.JSONDecodeError:
-                            pass
-
-                    df_i = pd.concat(chunk_dfs_lst)
-
-                df_i = df_i.pivot_table(index=df_i.index.date, columns=['ticker', df_i.index.hour]).stack(level=1)
-                df_i.columns = list(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in df_i.columns.tolist()]).str.replace(' ', '_'))
-
+                df_i = yfinance.download(' '.join(tickers), **yfinance_params)\
+                               .stack()\
+                               .rename_axis(index=['date', 'ticker'])\
+                               .add_suffix('_' + i)\
+                               .reset_index()
             else:
-                if yfinance_params['threads'] == True:
-                    df_i = yfinance.download(tickers, **yfinance_params).\
-                            stack().\
-                            add_suffix('_' + str(i))
-                else:
-                    ticker_chunks = [' '.join(tickers[i:i+n_chunks]) for i in range(0, len(tickers), n_chunks)]
 
-                    chunk_dfs_lst = []
-                    for chunk in ticker_chunks:
-                        try:
-                            temp_df = yfinance.download(chunk, **yfinance_params).\
-                                        stack().\
-                                        add_suffix('_' + str(i))
-                            chunk_dfs_lst.append(temp_df)
-                        except simplejson.errors.JSONDecodeError:
-                            pass
-                    df_i = pd.concat(chunk_dfs_lst)
+                ticker_chunks = [' '.join(tickers[i:i+n_chunks]) for i in range(0, len(tickers), n_chunks)]
+                chunk_dfs_lst = []
 
-                df_i.columns = [col.replace(' ', '_').lower() for col in df_i.columns]
+                for chunk in ticker_chunks:
+                    try:
+                        df_tmp = yfinance.download(chunk, **yfinance_params)\
+                                         .stack()\
+                                         .rename_axis(index=['date', 'ticker'])\
+                                         .add_suffix('_' + i)\
+                                         .reset_index()
+                        chunk_dfs_lst.append(df_tmp)
+                    except simplejson.errors.JSONDecodeError:
+                        pass
 
-            df_i.index.names = ['date', 'ticker']
+                df_i = pd.concat(chunk_dfs_lst)
+                del chunk_dfs_lst
+                yfinance_params['start'] = start_date
+
+            if i.endswith('m') or i.endswith('h'):
+                # Go long-to-wide on the min/hour bars
+                df_i = df_i.pivot_table(index=[df_i['date'].dt.date, 'ticker'], columns=[df_i['date'].dt.hour], aggfunc='first',
+                                        values=[i for i in df_i.columns if not i in ['date', 'ticker']])
+                df_i.columns = list(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in df_i.columns.tolist()]).str.replace(' ', '_'))
+                df_i.reset_index(inplace=True)
+                df_i['date'] = pd.to_datetime(df_i['date']) # pivot table sets the index, and reset_index changes 'date' to an object
+
+            df_i.columns = [col.replace(' ', '_').lower() for col in df_i.columns]
 
             list_of_dfs.append(df_i)
 
-        df_yahoo = reduce(lambda x, y: pd.merge(x, y, how=join_method, left_index=True, right_index=True), list_of_dfs)
-#         df_yahoo.reset_index(level=1, inplace=True)
+        df_yahoo = reduce(lambda x, y: pd.merge(x, y, how=join_method, on=['date', 'ticker']), list_of_dfs)
+        date_plus_ticker = df_yahoo['date'].astype(str) + df_yahoo['ticker'].astype(str) # one last quality check to ensure date + ticker is unique
+
+        assert len(date_plus_ticker) == len(set(date_plus_ticker)), i + ' date + ticker is not unique in df_yahoo!'
 
     else:
-        return 'Manual multi-threading not implemented yet. Set num_workers to 1.'
+        print('Multi-threading is not fully implemented yet!! Set num_workers=1.')
+        print(' *** Pulling yfinance data using', num_workers, 'threads! ***')
+        list_of_dfs = []
+        chunk_len = len(tickers) // num_workers
+        ticker_chunks = [' '.join(tickers[i:i+chunk_len]) for i in range(0, len(tickers), chunk_len)]
+
+        for i in intervals_to_download:
+
+            yfinance_params['interval'] = i
+
+            if (i.endswith('m') or i.endswith('h')) and (pd.to_datetime(yfinance_params['start']) < intraday_lookback_days):
+                yfinance_params['start'] = str(intraday_lookback_days)
+
+            if yfinance_params['threads'] == True:
+
+                print('Parallelizing using both dask and yfinance threads - some tickers may return a JSONDecodeError. If so, set threads to False in yfinance_params')
+
+                delayed_list = [delayed(yfinance.download)(' '.join(chunk), **yfinance_params)\
+                                                              .stack()\
+                                                              .rename_axis(index=['date', 'ticker'])\
+                                                              .add_suffix('_' + i)\
+                                                              .reset_index()\
+                                for chunk in ticker_chunks]
+            else:
+
+                print('Running safer-parallel')
+
+                def safe_yfinance_pull(ticker_chunks, yfinance_params):
+
+                    chunk_dfs_lst = []
+
+                    for chunk in ticker_chunks:
+                        try:
+                            df_tmp = yfinance.download(chunk, **yfinance_params)\
+                                             .stack()\
+                                             .rename_axis(index=['date', 'ticker'])\
+                                             .add_suffix('_' + i)\
+                                             .reset_index()
+                            chunk_dfs_lst.append(df_tmp)
+                        except simplejson.errors.JSONDecodeError:
+                            pass
+
+                    df_out = pd.concat(chunk_dfs_lst)
+                    return df_out
+
+                delayed_list = [delayed(safe_yfinance_pull)(chunk, yfinance_params) for chunk in ticker_chunks]
+
+            tuple_of_dfs = dask.compute(*delayed_list, num_workers=num_workers)
+
+            df_i = reduce(lambda x, y: pd.merge(x, y, how=join_method, on=['date', 'ticker']), tuple_of_dfs)
+            del tuple_of_dfs
+            yfinance_params['start'] = start_date
+
+            if i.endswith('m') or i.endswith('h'):
+                # Go long-to-wide on the min/hour bars
+                df_i = df_i.pivot_table(index=[df_i['date'].dt.date, 'ticker'], columns=[df_i['date'].dt.hour], aggfunc='first',
+                                        values=[i for i in df_i.columns if not i in ['date', 'ticker']])
+                df_i.columns = list(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in df_i.columns.tolist()]).str.replace(' ', '_'))
+                df_i.reset_index(inplace=True)
+                df_i['date'] = pd.to_datetime(df_i['date']) # pivot table sets the index, and reset_index changes 'date' to an object
+
+            df_i.columns = [col.replace(' ', '_').lower() for col in df_i.columns]
+
+            list_of_dfs.append(df_i)
+
+        df_yahoo = reduce(lambda x, y: pd.merge(x, y, how=join_method, on=['date', 'ticker']), list_of_dfs)
+        date_plus_ticker = df_yahoo['date'].astype(str) + df_yahoo['ticker'].astype(str) # one last quality check to ensure date + ticker is unique
 
     return df_yahoo
 

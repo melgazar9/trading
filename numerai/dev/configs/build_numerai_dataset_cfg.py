@@ -16,13 +16,11 @@ SHIFT_TARGET_HL_UP_TO_PRED_FUTURE = False
 
 DOWNLOAD_YAHOO_DATA = True
 
-DOWNLOAD_YFINANCE_DATA_PARAMS = {'start': '2000-01-01',
-                                 'intervals_to_download': ['1d', '1h'],
+DOWNLOAD_YFINANCE_DATA_PARAMS = {'intervals_to_download': ['1d', '1h'],
                                  'join_method': 'outer',
                                  'max_intraday_lookback_days': 363,
-                                 'n_chunks': 600,
-                                 'yfinance_threads': False}
-
+                                 'n_chunks': 500,
+                                 'yfinance_params': {'start': '1990-01-01', 'threads': False}}
 
 ### target params ###
 

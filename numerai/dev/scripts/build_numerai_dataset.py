@@ -74,16 +74,13 @@ if VERBOSE: print('tickers after:', ticker_map.shape)
 
 if DOWNLOAD_YAHOO_DATA:
     df_yahoo = download_yfinance_data(list(ticker_map['yahoo']), **DOWNLOAD_YFINANCE_DATA_PARAMS) # all valid yahoo tickers
-else:
+else: # read in file
     if DF_YAHOO_FILEPATH.lower().endswith('pq') or DF_YAHOO_FILEPATH.lower().endswith('parquet'):
         df_yahoo = dd.read_parquet(DF_YAHOO_FILEPATH,
                                     DASK_NPARTITIONS=DASK_NPARTITIONS).compute()
     elif DF_YAHOO_FILEPATH.lower().endswith('feather'):
         df_yahoo = dd.from_pandas(delayed(feather.read_dataframe)(DF_YAHOO_FILEPATH).compute(),
                                    npartitions=DASK_NPARTITIONS).compute()
-
-df_yahoo.sort_index(inplace=True)
-df_yahoo.reset_index(inplace=True)
 
 if VERBOSE: print(df_yahoo.info())
 
@@ -99,8 +96,13 @@ datetime_ticker_cat = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[TICKE
 assert len(datetime_ticker_cat) == len(set(datetime_ticker_cat)), 'TICKER_COL and DATETIME_COL do not make a unique index!'
 del datetime_ticker_cat
 
+df_yahoo.sort_values(by = [DATETIME_COL, TICKER_COL], inplace=True)
+
 if SAVE_DF_YAHOO_TO_FEATHER:
-    df_yahoo.to_feather(DF_YAHOO_OUTPATH)
+    if 'date' in df_yahoo.index.names or 'ticker' in df_yahoo.index.names:
+        df_yahoo.reset_index().to_feather(DF_YAHOO_OUTPATH)
+    else:
+        df_yahoo.reset_index(drop=True).to_feather(DF_YAHOO_OUTPATH)
 
 if SAVE_DF_YAHOO_TO_PARQUET:
     df_yahoo.to_parquet(DF_YAHOO_OUTPATH)
@@ -109,8 +111,6 @@ targets = pd.read_csv(NUMERAI_TARGETS_URL)\
             .assign(date=lambda df: pd.to_datetime(df['friday_date'], format='%Y%m%d'))
 
 if VERBOSE: targets['target'].value_counts(), targets['target'].value_counts(normalize=True)
-
-
 
 ### Merge targets into df_yahoo ###
 
@@ -162,7 +162,7 @@ df_yahoo = create_rolling_features(df_yahoo, **ROLLING_FEATURES_PARAMS)
 
 ### Create move_iar features ###
 
-df_yahoo = df_yahoo.groupby(GROUPBY_COLS).apply(lambda df: calc_move_iar(df, iar_cols=IAR_COLS))
+df_yahoo = df_yahoo.groupby(GROUPBY_COLS, group_keys=False).apply(lambda df: calc_move_iar(df, iar_cols=IAR_COLS))
 
 
 ### Save df ###
