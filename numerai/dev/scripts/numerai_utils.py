@@ -166,6 +166,48 @@ def download_yfinance_data(tickers,
 
     return df_yahoo
 
+def convert_df_dtypes(df,
+                     exclude_cols=[],
+                     new_float_dtype='float32',
+                     new_int_dtype='int8',
+                     new_obj_dtype='category',
+                     float_qualifiers='auto',
+                     int_qualifiers='auto',
+                     obj_qualifiers='auto'):
+
+    """
+    Description
+    ___________
+    This function is meant to be used to reduce the memory of a pandas df - e.g. changing the dtype from float64 to float32
+
+    Parameters
+    _________
+    df: pandas df
+    exclude_cols: list of cols to exclude
+    new_float_type: the new dtype of float columns
+    new_int_type: the new dtype of int columns
+    new_obj_type: the new dtype of obj columns
+    float_qualifiers: if 'auto', then detect the float columns using np.floating, else a list of float dtypes must be provided.
+        Only the columns with the exact dtypes provided in float_qualifiers will be changes
+    int_qualifiers: same as float_qualifiers but for ints
+    obj_qualifiers: same as float_qualifiers but for objects
+
+    """
+
+    dtype_df = pd.DataFrame(df.dtypes.reset_index()).rename(columns={'index':'col', 0:'dtype'})
+    unique_dtypes = dtype_df['dtype'].unique()
+
+    if float_qualifiers == 'auto':
+        float_cols = [i for i in df.select_dtypes([np.floating]).columns if not i in exclude_cols]
+        df[float_cols] = df[float_cols].astype(new_float_dtype)
+    if int_qualifiers == 'auto':
+        int_cols = [i for i in df.select_dtypes([np.int_]).columns if not i in exclude_cols]
+        df[int_cols] = df[int_cols].astype(new_int_dtype)
+    if obj_qualifiers == 'auto':
+        obj_cols = [i for i in df.select_dtypes([np.object_]).columns if not i in exclude_cols]
+        df[obj_cols] = df[obj_cols].astype(new_obj_dtype)
+
+    return df
 
 def create_naive_features_single_symbol(df,
                                         symbol='',
@@ -189,53 +231,53 @@ def create_naive_features_single_symbol(df,
 
     ### custom features ###
 
-    df['move' + new_col_suffix] = df[close_col] - df[open_col]
-    df['move_pct' + new_col_suffix] = df['move' + new_col_suffix] / df[open_col]
-    df['move_pct_change' + new_col_suffix] = df['move' + new_col_suffix].pct_change()
-    df['open_minus_prev_close' + new_col_suffix] = df[open_col] - df[close_col].shift()
-    df['prev_close_pct_chg' + new_col_suffix] = df['move' + new_col_suffix] / df[close_col].shift()
+    df.loc[:, 'move' + new_col_suffix] = df[close_col] - df[open_col]
+    df.loc[:, 'move_pct' + new_col_suffix] = df['move' + new_col_suffix] / df[open_col]
+    df.loc[:, 'move_pct_change' + new_col_suffix] = df['move' + new_col_suffix].pct_change()
+    df.loc[:, 'open_minus_prev_close' + new_col_suffix] = df[open_col] - df[close_col].shift()
+    df.loc[:, 'prev_close_pct_chg' + new_col_suffix] = df['move' + new_col_suffix] / df[close_col].shift()
 
-    df['high_move' + new_col_suffix] = df[high_col] - df[open_col]
-    df['high_move_pct' + new_col_suffix] = df['high_move' + new_col_suffix] / df[open_col]
-    df['high_move_pct_change' + new_col_suffix] = df['high_move' + new_col_suffix].pct_change()
+    df.loc[:, 'high_move' + new_col_suffix] = df[high_col] - df[open_col]
+    df.loc[:, 'high_move_pct' + new_col_suffix] = df['high_move' + new_col_suffix] / df[open_col]
+    df.loc[:, 'high_move_pct_change' + new_col_suffix] = df['high_move' + new_col_suffix].pct_change()
 
-    df['low_move' + new_col_suffix] = df[low_col] - df[open_col]
-    df['low_move_pct' + new_col_suffix] = df['low_move' + new_col_suffix] / df[open_col]
-    df['low_move_pct_change' + new_col_suffix] = df['low_move' + new_col_suffix].pct_change()
+    df.loc[:, 'low_move' + new_col_suffix] = df[low_col] - df[open_col]
+    df.loc[:, 'low_move_pct' + new_col_suffix] = df['low_move' + new_col_suffix] / df[open_col]
+    df.loc[:, 'low_move_pct_change' + new_col_suffix] = df['low_move' + new_col_suffix].pct_change()
 
-    df['close_minus_low' + new_col_suffix] = df[close_col] - df[low_col]
-    df['high_minus_close' + new_col_suffix] = df[high_col] - df[close_col]
+    df.loc[:, 'close_minus_low' + new_col_suffix] = df[close_col] - df[low_col]
+    df.loc[:, 'high_minus_close' + new_col_suffix] = df[high_col] - df[close_col]
 
-    df['prev_close_minus_low_minus' + new_col_suffix] = df[close_col].shift() - df[low_col]
-    df['high_minus_prev_close' + new_col_suffix] = df[high_col] - df[close_col].shift()
+    df.loc[:, 'prev_close_minus_low_minus' + new_col_suffix] = df[close_col].shift() - df[low_col]
+    df.loc[:, 'high_minus_prev_close' + new_col_suffix] = df[high_col] - df[close_col].shift()
 
     ### diffs ###
 
-    df['open_diff' + new_col_suffix] = df[open_col].diff()
-    df['high_diff' + new_col_suffix] = df[high_col].diff()
-    df['low_diff' + new_col_suffix] = df[low_col].diff()
-    df['close_diff' + new_col_suffix] = df[close_col].diff()
-    df['volume_diff' + new_col_suffix] = df[volume_col].diff()
+    df.loc[:, 'open_diff' + new_col_suffix] = df[open_col].diff()
+    df.loc[:, 'high_diff' + new_col_suffix] = df[high_col].diff()
+    df.loc[:, 'low_diff' + new_col_suffix] = df[low_col].diff()
+    df.loc[:, 'close_diff' + new_col_suffix] = df[close_col].diff()
+    df.loc[:, 'volume_diff' + new_col_suffix] = df[volume_col].diff()
 
     ### pct_change ###
 
-    df['open_pct_change' + new_col_suffix] = df[open_col].pct_change()
-    df['high_pct_change' + new_col_suffix] = df[high_col].pct_change()
-    df['low_pct_change' + new_col_suffix] = df[low_col].pct_change()
-    df['close_pct_change' + new_col_suffix] = df[close_col].pct_change()
-    df['volume_pct_change' + new_col_suffix] = df[volume_col].pct_change()
+    df.loc[:, 'open_pct_change' + new_col_suffix] = df[open_col].pct_change()
+    df.loc[:, 'high_pct_change' + new_col_suffix] = df[high_col].pct_change()
+    df.loc[:, 'low_pct_change' + new_col_suffix] = df[low_col].pct_change()
+    df.loc[:, 'close_pct_change' + new_col_suffix] = df[close_col].pct_change()
+    df.loc[:, 'volume_pct_change' + new_col_suffix] = df[volume_col].pct_change()
 
     ### pct_change of diff (e.g. second derivative of the diff)
 
-    df['open_diff_pct_change' + new_col_suffix] = df['open_diff' + new_col_suffix].pct_change()
-    df['high_diff_pct_change' + new_col_suffix] = df['high_diff' + new_col_suffix].pct_change()
-    df['low_diff_pct_change' + new_col_suffix] = df['low_diff' + new_col_suffix].pct_change()
-    df['close_diff_pct_change' + new_col_suffix] = df['close_diff' + new_col_suffix].pct_change()
-    df['volume_diff_pct_change' + new_col_suffix] = df['volume_diff' + new_col_suffix].pct_change()
+    df.loc[:, 'open_diff_pct_change' + new_col_suffix] = df['open_diff' + new_col_suffix].pct_change()
+    df.loc[:, 'high_diff_pct_change' + new_col_suffix] = df['high_diff' + new_col_suffix].pct_change()
+    df.loc[:, 'low_diff_pct_change' + new_col_suffix] = df['low_diff' + new_col_suffix].pct_change()
+    df.loc[:, 'close_diff_pct_change' + new_col_suffix] = df['close_diff' + new_col_suffix].pct_change()
+    df.loc[:, 'volume_diff_pct_change' + new_col_suffix] = df['volume_diff' + new_col_suffix].pct_change()
 
     ### range features ###
-    df['range' + new_col_suffix] = df[high_col] - df[low_col]
-    df['range_pct_change' + new_col_suffix] = df['range' + new_col_suffix].pct_change()
+    df.loc[:, 'range' + new_col_suffix] = df[high_col] - df[low_col]
+    df.loc[:, 'range_pct_change' + new_col_suffix] = df['range' + new_col_suffix].pct_change()
 
     return df
 
@@ -338,6 +380,38 @@ class CreateTargets():
 
 
 
+# def create_lagging_features(df, lagging_map, groupby_cols=None, new_col_prefix='prev', copy=True):
+#     """
+#
+#     Parameters
+#     __________
+#
+#     df : pandas df
+#     groupby_cols : str or list of cols to groupby before creating lagging transformation cols
+#     lagging_map : dict with keys as colnames and values as a list of periods for computing lagging features
+#     periods : periods to look back
+#
+#     """
+#
+#     if copy: df = df.copy()
+#
+#     unique_lagging_values = list(sorted({k for v in lagging_map.values() for k in v}))
+#
+#     if groupby_cols is None or len(groupby_cols) == 0:
+#         for period in unique_lagging_values:
+#             new_col_prefix_tmp = new_col_prefix + str(period) + '_'
+#             cols_to_lag = [k for k, v in lagging_map.items() if period in v]
+#             df[[new_col_prefix_tmp + c for c in cols_to_lag]] = df[cols_to_lag].transform(lambda s: s.shift(periods=period))
+#
+#     else:
+#         for period in unique_lagging_values:
+#             new_col_prefix_tmp = new_col_prefix + str(period) + '_'
+#             cols_to_lag = [k for k, v in lagging_map.items() if period in v]
+#
+#             df[[new_col_prefix_tmp + c for c in cols_to_lag]] = df.groupby(groupby_cols)[cols_to_lag]\
+#                                                                   .transform(lambda s: s.shift(periods=period))
+#     return df
+
 def create_lagging_features(df, lagging_map, groupby_cols=None, new_col_prefix='prev', copy=True):
     """
 
@@ -355,20 +429,101 @@ def create_lagging_features(df, lagging_map, groupby_cols=None, new_col_prefix='
 
     unique_lagging_values = list(sorted({k for v in lagging_map.values() for k in v}))
 
-    if groupby_cols is None or len(groupby_cols) == 0:
-        for period in unique_lagging_values:
-            new_col_prefix_tmp = new_col_prefix + str(period) + '_'
-            cols_to_lag = [k for k, v in lagging_map.items() if period in v]
-            df[[new_col_prefix_tmp + c for c in cols_to_lag]] = df[cols_to_lag].transform(lambda s: s.shift(periods=period))
+    for period in unique_lagging_values:
+        new_col_prefix_tmp = new_col_prefix + str(period) + '_'
+        cols_to_lag = [k for k, v in lagging_map.items() if period in v]
+        # df[[new_col_prefix_tmp + c for c in cols_to_lag]] = df[cols_to_lag].transform(lambda df: df.shift(periods=period))
+        df[[new_col_prefix_tmp + c for c in cols_to_lag]] = df[cols_to_lag].shift(periods=period)
 
-    else:
-        for period in unique_lagging_values:
-            new_col_prefix_tmp = new_col_prefix + str(period) + '_'
-            cols_to_lag = [k for k, v in lagging_map.items() if period in v]
-
-            df[[new_col_prefix_tmp + c for c in cols_to_lag]] = df.groupby(groupby_cols)[cols_to_lag]\
-                                                                  .transform(lambda s: s.shift(periods=period))
     return df
+
+# def create_rolling_features(df,
+#                             rolling_fn='mean',
+#                             ewm_fn='mean',
+#                             rolling_params={},
+#                             ewm_params={},
+#                             rolling_cols='all_numeric',
+#                             ewm_cols='all_numeric',
+#                             join_method='outer',
+#                             groupby_cols=None,
+#                             create_diff_cols=True,
+#                             copy=True):
+#     """
+#
+#     Parameters
+#     __________
+#     df : pandas df
+#
+#     rolling_fn : str called from df.rolling().rolling_fn (e.g. df.rolling.mean() is called with getattr)
+#     ewm_fn : str called from df.ewm().ewm_fn (e.g. df.ewm.mean() is called with getattr)
+#
+#     rolling_params : dict params passed to df.rolling()
+#     ewm_params : dict params passed to df.ewm()
+#
+#     rolling_cols : cols to apply rolling_fn
+#     ewm_cols : cols to apply ewm_fn
+#
+#     join_method : str 'inner', 'outer', 'left', or 'right' - how to join the dfs
+#     groupby_cols : list or str cols to group by before applying rolling transformations
+#         example: pass groupby_cols to the stacked ticker numerai dataset, but not a wide df
+#
+#     copy : bool whether or not to make a copy of the df
+#
+#     """
+#
+#     if copy: df = df.copy()
+#
+#     if isinstance(rolling_cols, str) and rolling_cols.lower() == 'all_numeric':
+#         rolling_cols = list(df.select_dtypes(include=np.number).columns)
+#
+#     if isinstance(rolling_cols, str) and ewm_cols.lower() == 'all_numeric':
+#         ewm_cols = list(df.select_dtypes(include=np.number).columns)
+#
+#     if groupby_cols is None or len(groupby_cols) == 0:
+#
+#         # rolling
+#         if rolling_fn is not None and len(rolling_cols) > 0:
+#             new_rolling_cols = [i + '_rolling_' + rolling_fn for i in rolling_cols]
+#             df[new_rolling_cols] = getattr(df[rolling_cols].rolling(**rolling_params), rolling_fn)()
+#
+#         # ewm
+#         if ewm_fn is not None and len(ewm_cols) > 0:
+#             new_ewm_cols = [i + '_ewm_' + ewm_fn for i in ewm_cols]
+#             df[new_ewm_cols] = getattr(df[ewm_cols].ewm(**ewm_params), ewm_fn)()
+#
+#     else:
+#
+#         if isinstance(groupby_cols, str):
+#             groupby_cols = [groupby_cols]
+#         else:
+#             raise ('Input param groupby_cols is not a list, string, or None!')
+#
+#         assert len(groupby_cols) == len(set(groupby_cols)), 'There are duplicates in groupby_cols!'
+#         rolling_cols_to_select = [i for i in list(set(groupby_cols + rolling_cols)) if i in df.columns] # check index name
+#         ewm_cols_to_select = [i for i in list(set(groupby_cols + ewm_cols)) if i in df.columns]
+#
+#         # rolling
+#         if rolling_fn is not None and len(rolling_cols) > 0:
+#             new_rolling_cols = [i + '_rolling_' + rolling_fn for i in rolling_cols_to_select if not i in groupby_cols]
+#             df[new_rolling_cols] = df[rolling_cols_to_select]\
+#                                     .groupby(groupby_cols)\
+#                                     .transform(lambda x: getattr(x.rolling(**rolling_params), rolling_fn)())
+#
+#         # ewm
+#         if ewm_fn is not None and len(ewm_cols) > 0:
+#             new_ewm_cols = [i + '_ewm_' + ewm_fn for i in ewm_cols_to_select if not i in groupby_cols]
+#             df[new_ewm_cols] = df[ewm_cols_to_select]\
+#                                 .groupby(groupby_cols)\
+#                                 .transform(lambda x: getattr(x.ewm(**ewm_params), ewm_fn)())
+#
+#     if create_diff_cols:
+#         diff_cols = [i for i in df.columns if 'ewm' in i or 'rolling' in i]
+#         if groupby_cols is None or len(groupby_cols) == 0:
+#             df = pd.concat([df, df[diff_cols].diff().add_suffix('_diff')], axis=1)
+#         else:
+#             df[[i + '_diff' for i in diff_cols]] = df.groupby(groupby_cols)[diff_cols].transform(lambda col: col.diff())
+#
+#     return df
 
 
 def create_rolling_features(df,
@@ -413,53 +568,19 @@ def create_rolling_features(df,
     if isinstance(rolling_cols, str) and ewm_cols.lower() == 'all_numeric':
         ewm_cols = list(df.select_dtypes(include=np.number).columns)
 
-    # lag_dfs_lst = []
+    # rolling
+    if rolling_fn is not None and len(rolling_cols) > 0:
+        new_rolling_cols = [i + '_rolling_' + rolling_fn for i in rolling_cols]
+        df[new_rolling_cols] = getattr(df[rolling_cols].rolling(**rolling_params), rolling_fn)()
 
-    if groupby_cols is None or len(groupby_cols) == 0:
-
-        # rolling
-        if rolling_fn is not None and len(rolling_cols) > 0:
-            new_rolling_cols = [i + '_rolling_' + rolling_fn for i in rolling_cols]
-            df[new_rolling_cols] = getattr(df[rolling_cols].rolling(**rolling_params), rolling_fn)()
-            # lag_dfs_lst.append(getattr(df[rolling_cols].rolling(**rolling_params), rolling_fn)().add_suffix('_rolling_' + rolling_fn))
-
-        # ewm
-        if ewm_fn is not None and len(ewm_cols) > 0:
-            new_ewm_cols = [i + '_ewm_' + ewm_fn for i in ewm_cols]
-            df[new_ewm_cols] = getattr(df[ewm_cols].ewm(**ewm_params), ewm_fn)()
-            # lag_dfs_lst.append(getattr(df[ewm_cols].ewm(**ewm_params), ewm_fn)().add_suffix('_ewm_' + ewm_fn))
-
-    else:
-
-        if isinstance(groupby_cols, str):
-            groupby_cols = [groupby_cols]
-        else:
-            raise ('Input param groupby_cols is not a list, string, or None!')
-
-        assert len(groupby_cols) == len(set(groupby_cols)), 'There are duplicates in groupby_cols!'
-        rolling_cols_to_select = [i for i in list(set(groupby_cols + rolling_cols)) if i in df.columns] # check index name
-        ewm_cols_to_select = [i for i in list(set(groupby_cols + ewm_cols)) if i in df.columns]
-
-        # rolling
-        if rolling_fn is not None and len(rolling_cols) > 0:
-            new_rolling_cols = [i + '_rolling_' + rolling_fn for i in rolling_cols_to_select if not i in groupby_cols]
-            df[new_rolling_cols] = df[rolling_cols_to_select]\
-                                    .groupby(groupby_cols)\
-                                    .transform(lambda x: getattr(x.rolling(**rolling_params), rolling_fn)())
-
-        # ewm
-        if ewm_fn is not None and len(ewm_cols) > 0:
-            new_ewm_cols = [i + '_ewm_' + ewm_fn for i in ewm_cols_to_select if not i in groupby_cols]
-            df[new_ewm_cols] = df[ewm_cols_to_select]\
-                                .groupby(groupby_cols)\
-                                .transform(lambda x: getattr(x.ewm(**ewm_params), ewm_fn)())
+    # ewm
+    if ewm_fn is not None and len(ewm_cols) > 0:
+        new_ewm_cols = [i + '_ewm_' + ewm_fn for i in ewm_cols]
+        df[new_ewm_cols] = getattr(df[ewm_cols].ewm(**ewm_params), ewm_fn)()
 
     if create_diff_cols:
         diff_cols = [i for i in df.columns if 'ewm' in i or 'rolling' in i]
-        if groupby_cols is None or len(groupby_cols) == 0:
-            df = pd.concat([df, df[diff_cols].diff().add_suffix('_diff')], axis=1)
-        else:
-            df[[i + '_diff' for i in diff_cols]] = df.groupby(groupby_cols)[diff_cols].transform(lambda col: col.diff())
+        df[[i + '_diff' for i in diff_cols]] = df[diff_cols].diff()
 
     return df
 

@@ -75,14 +75,18 @@ if VERBOSE: print('tickers after:', ticker_map.shape)
 if DOWNLOAD_YAHOO_DATA:
     df_yahoo = download_yfinance_data(list(ticker_map['yahoo']), **DOWNLOAD_YFINANCE_DATA_PARAMS) # all valid yahoo tickers
 else: # read in file
-    if DF_YAHOO_READPATH.lower().endswith('pq') or DF_YAHOO_READPATH.lower().endswith('parquet'):
-        df_yahoo = dd.read_parquet(DF_YAHOO_READPATH,
+    if YAHOO_READ_FILEPATH.lower().endswith('pq') or YAHOO_READ_FILEPATH.lower().endswith('parquet'):
+        df_yahoo = dd.read_parquet(YAHOO_READ_FILEPATH,
                                     DASK_NPARTITIONS=DASK_NPARTITIONS).compute()
-    elif DF_YAHOO_READPATH.lower().endswith('feather'):
-        df_yahoo = dd.from_pandas(delayed(feather.read_dataframe)(DF_YAHOO_READPATH).compute(),
+    elif YAHOO_READ_FILEPATH.lower().endswith('feather'):
+        df_yahoo = dd.from_pandas(delayed(feather.read_dataframe)(YAHOO_READ_FILEPATH).compute(),
                                    npartitions=DASK_NPARTITIONS).compute()
 
 if VERBOSE: print(df_yahoo.info())
+gc.collect()
+if CONVERT_DF_DTYPES:
+    print('\nconverting dtypes...\n')
+    df_yahoo = convert_df_dtypes(df_yahoo, **CONVERT_DTYPE_PARAMS)
 
 if CREATE_BLOOMBERG_TICKER_FROM_YAHOO or DOWNLOAD_YAHOO_DATA:
     if ('yahoo_ticker' not in df_yahoo.columns) or ('ticker' in df_yahoo.columns):
@@ -91,24 +95,25 @@ if CREATE_BLOOMBERG_TICKER_FROM_YAHOO or DOWNLOAD_YAHOO_DATA:
 
 
 ### Ensure no [DATETIME_COL, TICKER_COL] are duplicated. If so then there is an issue. ###
-
+print('\nvalidating unique date + ticker index...\n')
 datetime_ticker_cat = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[TICKER_COL].astype(str)).tolist()
-
 assert len(datetime_ticker_cat) == len(set(datetime_ticker_cat)), 'TICKER_COL and DATETIME_COL do not make a unique index!'
 del datetime_ticker_cat
-
+print('\nsorting...\n')
 df_yahoo.sort_values(by=[DATETIME_COL, TICKER_COL], inplace=True)
 
-if DF_INIT_FILEPATH.endswith('feather'):
-    if 'date' in df_yahoo.index.names or 'ticker' in df_yahoo.index.names:
-        df_yahoo.reset_index().to_feather(DF_INIT_FILEPATH)
-    else:
-        df_yahoo.reset_index(drop=True).to_feather(DF_YAHOO_FILEPATH)
-elif DF_INIT_FILEPATH.endswith('pq') or DF_INIT_FILEPATH.endswith('parquet'):
-    df_yahoo.to_parquet(DF_INIT_FILEPATH)
+print('\nsaving...\n')
 
-targets = pd.read_csv(NUMERAI_TARGETS_URL)\
-            .assign(date=lambda df: pd.to_datetime(df['friday_date'], format='%Y%m%d'))
+if INIT_SAVE_FILEPATH.endswith('feather'):
+    if 'date' in df_yahoo.index.names or 'ticker' in df_yahoo.index.names:
+        df_yahoo.reset_index().to_feather(INIT_SAVE_FILEPATH)
+    else:
+        df_yahoo.reset_index(drop=True).to_feather(INIT_SAVE_FILEPATH)
+elif INIT_SAVE_FILEPATH.endswith('pq') or INIT_SAVE_FILEPATH.endswith('parquet'):
+    df_yahoo.to_parquet(INIT_SAVE_FILEPATH)
+
+print('\nreading targets...\n')
+targets = pd.read_csv(NUMERAI_TARGETS_URL).assign(date=lambda df: pd.to_datetime(df['friday_date'], format='%Y%m%d'))
 
 if VERBOSE: targets['target'].value_counts(), targets['target'].value_counts(normalize=True)
 
@@ -119,62 +124,68 @@ if VERBOSE: targets['target'].value_counts(), targets['target'].value_counts(nor
 # - The best bet seems to be an outer join without dropping NA rows.
 # df_yahoo.set_index(DATETIME_COL, inplace=True)
 # df_yahoo.sort_index(inplace=True)
-
+print('\nmerging numerai target...\n')
 df_yahoo = pd.merge(df_yahoo, targets, on=TARGET_JOIN_COLS, how=TARGET_JOIN_METHOD)
+del targets # reduce memory
 
-del targets # save memory
 TICKERS = df_yahoo[TICKER_COL].unique().tolist()
 
 ### conditionally drop NAs ###
 
 if RUN_CONDITIONAL_DROPNA:
+    print('\nrunning conditional drop_nas...\n')
     df_yahoo = drop_nas(df_yahoo, **DROPNA_PARAMS)
+gc.collect()
 
 ### create naive features ###
+print('\ncreating naive features...\n')
+df_yahoo = df_yahoo.groupby(TICKER_COL, group_keys=False).apply(lambda df: create_naive_features_single_symbol(df, **NAIVE_FEATURES_PARAMS)) # Create naive features (e.g. moves, ranges, etc...)
 
-df_yahoo = df_yahoo.groupby(TICKER_COL, group_keys=False).apply(create_naive_features_single_symbol) # Create naive features (e.g. moves, ranges, etc...)
-
-### create manual targets ###
-
-df_yahoo = CreateTargets(df_yahoo).create_targets_HL3(**TARGETS_HL3_PARAMS) # create target_HL3
-df_yahoo = CreateTargets(df_yahoo).create_targets_HL5(**TARGETS_HL5_PARAMS) # create target_HL5
-
+### create custom targets ###
+print('\ncreating custom targets...\n')
+df_yahoo = CreateTargets(df_yahoo, copy=False).create_targets_HL3(**TARGETS_HL3_PARAMS) # create target_HL3
+df_yahoo = CreateTargets(df_yahoo, copy=False).create_targets_HL5(**TARGETS_HL5_PARAMS) # create target_HL5
 
 if VERBOSE:
     display(df_yahoo[TARGETS_HL3_PARAMS['target_suffix']].value_counts()), display(df_yahoo[TARGETS_HL3_PARAMS['target_suffix']].value_counts(normalize=True))
     display(df_yahoo[TARGETS_HL5_PARAMS['target_suffix']].value_counts()), display(df_yahoo[TARGETS_HL5_PARAMS['target_suffix']].value_counts(normalize=True))
 
-### For each ticker, shift the target backwards one timestamp, where each row is the unit of measure (e.g. each row is a day) ###
+
+### For each ticker, for non-numerai data, shift the target backwards one timestamp, where each row is the unit of measure (e.g. each row is a day) ###
 
 if SHIFT_TARGET_HL_UP_TO_PRED_FUTURE:
     df_yahoo[TARGETS_HL3_PARAMS['target_suffix']] = df_yahoo.groupby(TICKER_COL)[TARGETS_HL3_PARAMS['target_suffix']].transform(lambda col: col.shift(-1))
     df_yahoo[TARGETS_HL5_PARAMS['target_suffix']] = df_yahoo.groupby(TICKER_COL)[TARGETS_HL5_PARAMS['target_suffix']].transform(lambda col: col.shift(-1))
 
 ### Create lagging features ###
-
-df_yahoo = create_lagging_features(df_yahoo, **LAGGING_FEATURES_PARAMS)
+print('\ncreating lagging features...\n')
+df_yahoo = df_yahoo.groupby(TICKER_COL, group_keys=False).apply(lambda df: create_lagging_features(df, **LAGGING_FEATURES_PARAMS))
 
 gc.collect()
 
 ### Create rolling features ###
 
-df_yahoo = create_rolling_features(df_yahoo, **ROLLING_FEATURES_PARAMS)
+# df_yahoo = create_rolling_features(df_yahoo, **ROLLING_FEATURES_PARAMS)
+print('\ncreating rolling features...\n')
+df_yahoo = df_yahoo.groupby(TICKER_COL, group_keys=False).apply(lambda df: create_rolling_features(df, **ROLLING_FEATURES_PARAMS))
+
 
 ### Create move_iar features ###
 
-df_yahoo = df_yahoo.groupby(TICKER_COL, group_keys=False).apply(lambda df: calc_move_iar(df, iar_cols=IAR_COLS))
-
+print('\ncalculating move_iar...\n')
+df_yahoo = df_yahoo.groupby(TICKER_COL, group_keys=False).apply(lambda df: calc_move_iar(df, **IAR_PARAMS))
+gc.collect()
 
 ### Save df ###
 
-if DF_BUILD_FILEPATH.endswith('feather'):
+print('\nfinal save...\n')
+if FINAL_SAVE_FILEPATH.endswith('feather'):
     if 'date' in df_yahoo.index.names or 'ticker' in df_yahoo.index.names:
-        df_yahoo.reset_index().to_feather(DF_BUILD_FILEPATH)
+        df_yahoo.reset_index().to_feather(FINAL_SAVE_FILEPATH)
     else:
-        df_yahoo.reset_index(drop=True).to_feather(DF_BUILD_FILEPATH)
-elif DF_BUILD_FILEPATH.endswith('pq') or DF_BUILD_FILEPATH.endswith('parquet'):
-    df_yahoo.to_parquet(DF_BUILD_FILEPATH)
+        df_yahoo.reset_index(drop=True).to_feather(FINAL_SAVE_FILEPATH)
+elif FINAL_SAVE_FILEPATH.endswith('pq') or FINAL_SAVE_FILEPATH.endswith('parquet'):
+    df_yahoo.to_parquet(FINAL_SAVE_FILEPATH)
 
 end_time = time.time()
-
 if VERBOSE: print('Script took:', round((end_time - start_time) / 60, 3), 'minutes')

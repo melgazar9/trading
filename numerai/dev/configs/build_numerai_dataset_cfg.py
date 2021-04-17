@@ -12,6 +12,11 @@ CREATE_BLOOMBERG_TICKER_FROM_YAHOO = True
 
 SHIFT_TARGET_HL_UP_TO_PRED_FUTURE = False
 
+CONVERT_DF_DTYPES = True
+CONVERT_DTYPE_PARAMS = {'new_float_dtype': 'float32',
+                       'new_int_dtype': 'int8',
+                       'new_obj_dtype': 'category'}
+
 ### download_yfinance_data params ###
 
 DOWNLOAD_YAHOO_DATA = False
@@ -23,7 +28,7 @@ DOWNLOAD_YFINANCE_DATA_PARAMS = {'intervals_to_download': ['1d', '1h'],
                                  'yfinance_params': {'start': '1990-01-01', 'threads': False}}
 
 # the below filepath reads the df into memory if DOWNLOAD_YAHOO_DATA == False
-DF_YAHOO_READPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_yahoo_init_2021-04-16.feather'
+YAHOO_READ_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_yahoo_init_2021-04-16.feather'
 
 ### target params ###
 
@@ -34,8 +39,8 @@ NUMERAI_TARGETS_URL = 'https://numerai-signals-public-data.s3-us-west-2.amazonaw
 
 ### path params ###
 
-DF_INIT_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_numerai_init_' + str(datetime.datetime.today().date()) + '.feather'
-DF_BUILD_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather'
+INIT_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_numerai_init_' + str(datetime.datetime.today().date()) + '.feather'
+FINAL_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather'
 
 ### numerai_competition_data params ###
 
@@ -75,11 +80,19 @@ TARGETS_HL5_PARAMS = {'strong_buy': 0.035,
                       }
 
 
+NAIVE_FEATURES_PARAMS = {'copy': False,
+                         'open_col': 'open_1d',
+                         'high_col': 'high_1d',
+                         'low_col': 'low_1d',
+                         'close_col': 'adj_close_1d',
+                         'volume_col': 'volume_1d',
+                         'new_col_suffix': '_1d'}
+
 ### lagging_features params ###
 
 LAGGING_FEATURES_PARAMS = {
-    'groupby_cols': TICKER_COL,
-
+    # 'groupby_cols': TICKER_COL,
+    'copy': False,
     'lagging_map': {'target': [1, 2, 3, 4, 5],
                     'target_HL3': [1, 2, 3, 4, 5],
                     'target_HL5': [1, 2, 3, 4, 5],
@@ -99,10 +112,11 @@ ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},
                            'rolling_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target', 'prev1_target_HL5'],
                            'ewm_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target', 'prev1_target_HL5'],
                            'join_method': 'outer',
-                           'groupby_cols': TICKER_COL,
-                           'create_diff_cols': True
+                           # 'groupby_cols': TICKER_COL,
+                           'create_diff_cols': True,
+                           'copy': False
                            }
 
 ### move_iar params ###
 
-IAR_COLS = ['move_1d', 'high_move_1d', 'low_move_1d']
+IAR_PARAMS = {'iar_cols': ['move_1d', 'high_move_1d', 'low_move_1d'], 'copy': False}
