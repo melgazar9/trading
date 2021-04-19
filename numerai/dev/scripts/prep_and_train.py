@@ -41,13 +41,13 @@ elif LOAD_DATA_FILEPATH.endswith('csv'):
 
 input_features = eval(INPUT_FEATURES_STRING)
 preserve_vars = eval(PRESERVE_VARS_STRING)
-df_numerai = df_numerai[list(set(input_features + preserve_vars + [TARGET]))]
+# df_train = df_numerai[list(set(input_features + preserve_vars + [TARGET]))]
 
 ### Timeseries Split ###
 
 df_numerai = timeseries_split(df_numerai, **TIMESERIES_SPLIT_PARAMS)
 
-X_train, y_train = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')].drop(TARGET, axis=1), df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][TARGET]
+X_train, y_train = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][TARGET]
 X_val, y_val = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')].drop(TARGET, axis=1), df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][TARGET]
 # X_test, y_test = df_numerai[df_numerai[SPLIT_COLNAME] == 'test'].drop(TARGET, axis=1), df_numerai[df_numerai[SPLIT_COLNAME] == 'test'][TARGET]
 

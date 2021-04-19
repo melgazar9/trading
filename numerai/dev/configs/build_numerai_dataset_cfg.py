@@ -28,7 +28,7 @@ DOWNLOAD_YFINANCE_DATA_PARAMS = {'intervals_to_download': ['1d', '1h'],
                                  'yfinance_params': {'start': '1990-01-01', 'threads': False}}
 
 # the below filepath reads the df into memory if DOWNLOAD_YAHOO_DATA == False
-YAHOO_READ_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_yahoo_init_2021-04-16.feather'
+YAHOO_READ_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_numerai_init_2021-04-17.feather'
 
 ### target params ###
 
@@ -51,14 +51,31 @@ DF_NUMERAI_COMP_TRAIN_PATH = '/media/melgazar9/HDD_10TB/trading/data/numerai_dat
 ### drop_nas params ###
 
 RUN_CONDITIONAL_DROPNA = False
+
 DROPNA_PARAMS = {'col_contains': ['1d'],
                  'exception_cols': ['target']}
 
 
+NAIVE_FEATURES_PARAMS = {'open_col': 'open_1d',
+                         'high_col': 'high_1d',
+                         'low_col': 'low_1d',
+                         'close_col': 'adj_close_1d',
+                         'volume_col': 'volume_1d',
+                         'new_col_suffix': '_1d',
+                         'copy': False}
+
+DIFF_PARAMS_STRING = "{'diff_cols': list(set([i for i in df_yahoo.columns for j in ['move', 'pct', 'chg', 'minus'] if j in i])), \
+                       'copy': False}"
+
+PCT_CHG_PARAMS_STRING = "{'pct_change_cols': list(set([i for i in df_yahoo.columns for j in ['move', 'pct', 'chg', 'minus', 'diff'] if j in i])),\
+                          'copy': False}"
+
+DROP_DUPLICATE_ROWS = False
+
 ### CreateTargets params ###
 
-TARGETS_HL3_PARAMS = {'buy': 0.03,
-                      'sell': 0.03,
+TARGETS_HL3_PARAMS = {'buy': 0.025,
+                      'sell': 0.025,
                       'threshold': 0.25,
                       'stop': .01,
                       'move_col': 'move_pct_1d',
@@ -78,28 +95,19 @@ TARGETS_HL5_PARAMS = {'strong_buy': 0.035,
                       'hm_col': 'high_move_pct_1d',
                       'target_suffix': 'target_HL5'
                       }
-
-
-NAIVE_FEATURES_PARAMS = {'copy': False,
-                         'open_col': 'open_1d',
-                         'high_col': 'high_1d',
-                         'low_col': 'low_1d',
-                         'close_col': 'adj_close_1d',
-                         'volume_col': 'volume_1d',
-                         'new_col_suffix': '_1d'}
-
 ### lagging_features params ###
 
 LAGGING_FEATURES_PARAMS = {
     # 'groupby_cols': TICKER_COL,
-    'copy': False,
+
     'lagging_map': {'target': [1, 2, 3, 4, 5],
                     'target_HL3': [1, 2, 3, 4, 5],
                     'target_HL5': [1, 2, 3, 4, 5],
                     'volume_1d': [1, 2, 3, 4, 5],
                     'adj_close_1d': [1, 2, 3, 4, 5],
                     'move_1d': [1, 2, 3, 4, 5]
-                    }
+                    },
+    'copy': False
     }
 
 
@@ -113,7 +121,6 @@ ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},
                            'ewm_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target', 'prev1_target_HL5'],
                            'join_method': 'outer',
                            # 'groupby_cols': TICKER_COL,
-                           'create_diff_cols': True,
                            'copy': False
                            }
 

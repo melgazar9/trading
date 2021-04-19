@@ -2,7 +2,7 @@ from dev.scripts.ML_utils import *
 
 NUM_WORKERS = 32
 
-LOAD_DATA_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/df_numerai_2021-04-12.feather'
+LOAD_DATA_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/yfinance/df_numerai_build_2021-04-16.feather'
 
 DF_OUTPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/'
 
@@ -12,10 +12,10 @@ PRESERVE_VARS = []
 
 TICKER_COL = 'bloomberg_ticker'
 
-INPUT_FEATURES_STRING = "[col for col in df_numerai.columns\
+INPUT_FEATURES_STRING = "list(set([col for col in df_numerai.columns\
                             for prefix in\
                             ['prev', 'pct', 'move', 'minus', 'diff', 'range', 'TARGET_HL3', 'TARGET_HL5']\
-                            if prefix in col]"
+                            if prefix in col]))"
 
 PRESERVE_VARS_STRING = "list(set([col for col in df_numerai.columns if not col in input_features]))"
 
