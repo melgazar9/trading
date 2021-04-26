@@ -352,7 +352,11 @@ class FeatureImportance:
                 if 'input_features' in transformer.get_feature_names.__code__.co_varnames:
                     names = list(transformer.get_feature_names(orig_feature_names))
                 else:
-                    names = list(transformer.get_feature_names())
+                    try:
+                        names = list(transformer.get_feature_names())
+                    except:
+                        if self.verbose: print('transformer ' + str(i) + ' is not fitted!')
+                        continue
 
             elif hasattr(transformer,'indicator_') and transformer.add_indicator:
                 # is this transformer one of the imputers & did it call the MissingIndicator?
@@ -795,41 +799,95 @@ class RunModel():
 
         return run_model_dict
 
-
 class Resampler():
 
     """
-
     Parameters
     ----------
     algorithm: The resampling algorithm to use
 
-    In fit:
-
+    In fit params:
     X: The training dataframe that does not include the target variable
     y: A pandas Series of the target variable
-
-
     -------
     Attributes
-
     See imblearn documentation for the attributes of whichever resampling algorithm you choose
-
     -------
     Returns a resampled pandas dataframe
-
     -------
 
     """
 
     def __init__(self, algorithm):
-
         self.algorithm = algorithm
 
     def fit_transform(self, X, y):
-
         ds_print('Running {}'.format(type(self.algorithm).__name__))
-
         df_resampled = self.algorithm.fit_resample(X, y)
-
         return df_resampled
+
+def timeseries_split(df,
+                     train_prop=.7,
+                     val_prop=.15,
+                     target_name='target',
+                     return_single_df=True,
+                     split_colname='dataset_split',
+                     sort_df_params={},
+                     copy=True):
+
+    """
+
+    Get the column names from the a ColumnTransformer containing transformers & pipelines
+
+    Parameters
+    ----------
+    df: a pandas (compatible) dataframe
+    train_prop: float - proportion of train orders assuming the data is sorted in ascending order
+        example: 0.7 means 70% of the df will train orders
+    val_prop: float - proportion of val orders
+        e.g. 0.1 means 10% of the df will be val orders, where the val orders come after the train orders
+    feature_prefixes: str or list - the feature name starts with this string to be considered a feature
+    target_name: str - name of the target variable
+    return_single_df: If true then a new column <split_colname> will be concatenated to the df with 'train', 'val', or 'test'
+    split_colname: If return_single_df is True, then this is the name of the new split col
+    sort_df_params: Set to False or empty dict to not sort the df by any column.
+        To sort, specify as dict the input params to either df.sort_index or df.sort_values.
+
+
+    Returns
+    -------
+
+    Either a tuple of dataframes: X_train, y_train, X_val, y_val, X_test, y_test
+      Or the same df with a new <split_colname> having ['train', 'val', 'test'] or 'None' populated
+
+    """
+
+    if copy: df = df.copy()
+
+    nrows = len(df)
+
+    if sort_df_params:
+        if list(sort_df_params.keys())[0].lower() == 'index' and not 'index' in df.columns:
+            df.sort_index(**sort_df_params)
+        else:
+            df.sort_values(**sort_df_params)
+
+    if return_single_df:
+
+        df.loc[0:int(np.floor(nrows*train_prop)), split_colname] = 'train'
+        df.loc[int(np.floor(nrows*train_prop)): int(np.floor(nrows*(1 - val_prop))), split_colname] = 'val'
+        df.loc[int(np.floor(nrows*(1 - val_prop))):, split_colname] = 'test'
+
+        return df
+
+    else:
+        X_train = df.iloc[0:int(np.floor(nrows*train_prop))][feature_list]
+        y_train = df.iloc[0:int(np.floor(nrows*train_prop))][target_name]
+
+        X_val = df.iloc[int(np.floor(nrows*train_prop)):int(np.floor(nrows*(1 - val_prop)))][feature_list]
+        y_val = df.iloc[int(np.floor(nrows*train_prop)):int(np.floor(nrows*(1 - val_prop)))][target_name]
+
+        X_test = df.iloc[int(np.floor(nrows*(1 - val_prop))):][feature_list]
+        y_test = df.iloc[int(np.floor(nrows*(1 - val_prop))):][target_name]
+
+        return X_train, y_train, X_val, y_val, X_test, y_test

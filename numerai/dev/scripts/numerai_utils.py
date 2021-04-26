@@ -13,7 +13,8 @@ def download_yfinance_data(tickers,
                            join_method='outer',
                            max_intraday_lookback_days=363,
                            n_chunks=600,
-                           yfinance_params={}):
+                           yfinance_params={},
+                           verbose=True):
     """
 
     Parameters
@@ -36,6 +37,14 @@ def download_yfinance_data(tickers,
 
     NOTE: passing some intervals return unreliable stock data (e.g. '3mo' returns many NA data points when they should not be NA)
     """
+    if not 'start' in yfinance_params.keys():
+        if verbose: print('*** yfinance params start set to 2005-01-01! ***')
+        yfinance_params['start'] = '2005-01-01'
+    if not 'threads' in yfinance_params.keys():
+        if verbose: print('*** yfinance params threads set to False! ***')
+        yfinance_params['threads'] = False
+    if not verbose:
+        yfinance_params['progress'] = False
 
     intraday_lookback_days = datetime.datetime.today().date() - datetime.timedelta(days=max_intraday_lookback_days)
     start_date = yfinance_params['start']
@@ -78,15 +87,17 @@ def download_yfinance_data(tickers,
                 del chunk_dfs_lst
                 yfinance_params['start'] = start_date
 
-            if i.endswith('m') or i.endswith('h'):
+            if i.endswith('h'):
                 # Go long-to-wide on the min/hour bars
-                df_i = df_i.pivot_table(index=[df_i['date'].dt.date, 'ticker'], columns=[df_i['date'].dt.hour], aggfunc='first',
+                df_i['date'] = pd.to_datetime(df_i['date'])
+                df_i = df_i.pivot_table(index=[df_i['date'].dt.date, 'ticker'],
+                                        columns=[df_i['date'].dt.hour], aggfunc='first',
                                         values=[i for i in df_i.columns if not i in ['date', 'ticker']])
                 df_i.columns = list(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in df_i.columns.tolist()]).str.replace(' ', '_'))
                 df_i.reset_index(inplace=True)
                 df_i['date'] = pd.to_datetime(df_i['date']) # pivot table sets the index, and reset_index changes 'date' to an object
 
-            df_i.columns = [col.replace(' ', '_').lower() for col in df_i.columns]
+            df_i.columns = [str(col).replace(' ', '_').lower() for col in df_i.columns]
 
             list_of_dfs.append(df_i)
 
@@ -96,8 +107,8 @@ def download_yfinance_data(tickers,
         assert len(date_plus_ticker) == len(set(date_plus_ticker)), i + ' date + ticker is not unique in df_yahoo!'
 
     else:
-        print('Multi-threading is not fully implemented yet!! Set num_workers=1.')
-        print(' *** Pulling yfinance data using', num_workers, 'threads! ***')
+        if verbose: print('Multi-threading is not fully implemented yet!! Set num_workers=1.')
+        if verbose: print(' *** Pulling yfinance data using', num_workers, 'threads! ***')
         list_of_dfs = []
         chunk_len = len(tickers) // num_workers
         ticker_chunks = [' '.join(tickers[i:i+chunk_len]) for i in range(0, len(tickers), chunk_len)]
@@ -112,7 +123,7 @@ def download_yfinance_data(tickers,
 
             if yfinance_params['threads'] == True:
 
-                print('Parallelizing using both dask and yfinance threads - some tickers may return a JSONDecodeError. If so, set threads to False in yfinance_params')
+                if verbose: print('Parallelizing using both dask and yfinance threads - some tickers may return a JSONDecodeError. If so, set threads to False in yfinance_params')
 
                 delayed_list = [delayed(yfinance.download)(' '.join(chunk), **yfinance_params)\
                                                               .stack()\
@@ -122,7 +133,7 @@ def download_yfinance_data(tickers,
                                 for chunk in ticker_chunks]
             else:
 
-                print('Running safer-parallel')
+                if verbose: print('Running safer-parallel')
 
                 def safe_yfinance_pull(ticker_chunks, yfinance_params):
 
@@ -159,7 +170,7 @@ def download_yfinance_data(tickers,
                 df_i.reset_index(inplace=True)
                 df_i['date'] = pd.to_datetime(df_i['date']) # pivot table sets the index, and reset_index changes 'date' to an object
 
-            df_i.columns = [col.replace(' ', '_').lower() for col in df_i.columns]
+            df_i.columns = [str(col).replace(' ', '_').lower() for col in df_i.columns]
 
             list_of_dfs.append(df_i)
 
@@ -171,7 +182,7 @@ def download_yfinance_data(tickers,
 def convert_df_dtypes(df,
                      exclude_cols=[],
                      new_float_dtype='float32',
-                     new_int_dtype='int8',
+                     new_int_dtype='Int64',
                      new_obj_dtype='category',
                      float_qualifiers='auto',
                      int_qualifiers='auto',
@@ -532,3 +543,111 @@ def calc_trend(df, iar_cols, iar_suffix='_iar', trend_suffix='_trend', flat_thre
     df.loc[np.abs(df[iar_cols]) <= flat_threshold, trend_colname] = 'flat'
     return df
 
+def calc_coef(df, target_colname, pred_colname):
+
+    """Takes df as input and calculates spearman correlation between target and prediction"""
+
+    # method="first" breaks ties based on order in array
+    correlation = np.corrcoef(df[target_colname],
+                              df[pred_colname].rank(pct=True, method="first")
+                              )[0,1]
+    return correlation
+
+
+
+def plot_coef_scores(era_scores,
+                     x='date',
+                     y='era_score',
+                     groupby_cols=None,
+                     rolling_period=10,
+                     verbose=True,
+                     copy=True,
+                     **plotly_params):
+
+    if copy: era_scores = era_scores.copy()
+
+    ### not grouped ###
+
+    if groupby_cols is None or not len(groupby_cols):
+
+        if not era_scores.index.name == x:
+            era_scores.set_index(x, inplace=True)
+
+        ### rolling mean ###
+
+        fig1 = px.line(era_scores.rolling(rolling_period).mean().reset_index(), x=x, y=y, **plotly_params)
+        fig1.add_hline(y=0)
+        fig1.show()
+
+        ### cumsum ###
+
+        fig2 = px.line(era_scores.cumsum(), **plotly_params)
+        fig2.add_hline(y=0)
+        fig2.show()
+
+    ### grouped ###
+
+    else:
+
+        ### rolling mean ###
+
+        era_scores_grouped1 = era_scores.groupby(groupby_cols).rolling(rolling_period).mean()
+
+        fig1 = px.line(era_scores_grouped1.reset_index(),
+                       x=x,
+                       y=y,
+                       line_group=groupby_cols,
+                       color=groupby_cols,
+                       **plotly_params)
+        fig1.add_hline(y=0)
+        fig1.show()
+
+
+        ### cumsum ###
+
+        era_scores_grouped2 = era_scores.reset_index()\
+                                        .set_index([x, groupby_cols])\
+                                        .groupby(groupby_cols)\
+                                        .cumsum()\
+                                        .reset_index(level=groupby_cols)
+
+        fig2 = px.line(era_scores_grouped2,
+                       line_group=groupby_cols,
+                       color=groupby_cols,
+                       **plotly_params)
+        fig2.add_hline(y=0)
+        fig2.show()
+
+    if verbose:
+        if groupby_cols: era_scores = era_scores[y]
+        print(f"Mean Correlation: {era_scores.mean(): .3f}")
+        print(f"Median Correlation: {era_scores.median(): .3f}")
+        print(f"Standard Deviation: {era_scores.std(): .3f}\n")
+        print(f"Mean Pseudo-Sharpe: {era_scores.mean()/era_scores.std(): .3f}")
+        print(f"Median Pseudo-Sharpe: {era_scores.median()/era_scores.std(): .3f}\n")
+        print(f'Hit Rate (% positive eras): {era_scores.apply(lambda x: np.sign(x)).value_counts()[1]/len(era_scores):.2%}')
+    return
+
+
+def calculate_fnc(sub, targets, features):
+    """
+    Args:
+        sub (pd.Series)
+        targets (pd.Series)
+        features (pd.DataFrame)
+    """
+
+    # Normalize submission
+    sub = (sub.rank(method="first").values - 0.5) / len(sub)
+
+    # Neutralize submission to features
+    f = features.values
+    sub -= f.dot(np.linalg.pinv(f).dot(sub))
+    sub /= sub.std()
+
+    sub = pd.Series(np.squeeze(sub)) # Convert np.ndarray to pd.Series
+
+    # FNC: Spearman rank-order correlation of neutralized submission to target
+    fnc = np.corrcoef(sub.rank(pct=True, method="first"), targets)[0, 1]
+
+    return fnc
