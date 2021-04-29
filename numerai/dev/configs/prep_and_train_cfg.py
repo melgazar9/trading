@@ -1,5 +1,5 @@
 from dev.scripts.ML_utils import *
-
+from numerai.dev.scripts.numerai_utils import *
 ### general params ###
 
 NUM_WORKERS = 32
@@ -17,9 +17,8 @@ START_DATE = '2005-01-01'
 SAVE_FEATURE_TRANSFORMER = False
 SAVE_OBJECT = False
 
-LOAD_DATA_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_2021-04-24.feather'
+LOAD_DATA_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_2021-04-28.feather'
 OBJECT_OUTPATH = '/media/melgazar9/HDD_10TB/trading/objects/'
-
 
 ### feature params ###
 
@@ -37,52 +36,142 @@ TIMESERIES_SPLIT_PARAMS = {'train_prop': .7,
                            'sort_df_params': {}}
 
 
-### feature transformation params ###
+
+
+
+########################################
+###### Feature Engineering Params ######
+########################################
+
+DROPNA_PARAMS = {'col_contains': ['1d'], 'exception_cols': ['target']}
+
+NAIVE_FEATURES_PARAMS = {'open_col': 'open_1d',
+                         'high_col': 'high_1d',
+                         'low_col': 'low_1d',
+                         'close_col': 'adj_close_1d',
+                         'volume_col': 'volume_1d',
+                         'new_col_suffix': '_1d',
+                         'copy': False}
+
+DIFF_PARAMS_STRING = "{'diff_cols': list(set([i for i in df_numerai.columns for j in ['move', 'pct', 'chg', 'minus'] if j in i])), \
+                       'copy': False}"
+
+PCT_CHG_PARAMS_STRING = "{'pct_change_cols': list(set([i for i in df_numerai.columns for j in ['move', 'pct', 'chg', 'minus', 'diff'] if j in i])),\
+                          'copy': False}"
+
+DROP_DUPLICATE_ROWS = False
+
+""" CreateTargets params """
+
+TARGETS_HL3_PARAMS = {'buy': 0.025,
+                      'sell': 0.025,
+                      'threshold': 0.25,
+                      'stop': .01,
+                      'move_col': 'move_pct_1d',
+                      'lm_col': 'low_move_pct_1d',
+                      'hm_col': 'high_move_pct_1d',
+                      'target_suffix': 'target_HL3'
+                      }
+
+TARGETS_HL5_PARAMS = {'strong_buy': 0.035,
+                      'med_buy': 0.015,
+                      'med_sell': 0.015,
+                      'strong_sell': 0.035,
+                      'threshold': 0.25,
+                      'stop': .025,
+                      'move_col': 'move_pct_1d',
+                      'lm_col': 'low_move_pct_1d',
+                      'hm_col': 'high_move_pct_1d',
+                      'target_suffix': 'target_HL5'
+                      }
+""" lagging_features params """
+
+LAGGING_FEATURES_PARAMS = {
+    # 'groupby_cols': TICKER_COL,
+
+    'lagging_map': {'target': [1, 2, 3, 4, 5],
+                    'target_HL3': [1, 2, 3, 4, 5],
+                    'target_HL5': [1, 2, 3, 4, 5],
+                    'volume_1d': [1, 2, 3, 4, 5],
+                    'adj_close_1d': [1, 2, 3, 4, 5],
+                    'move_1d': [1, 2, 3, 4, 5]
+                    },
+    'copy': False
+    }
+
+
+""" rolling_features params """
+
+ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},
+                           'rolling_fn': 'mean',
+                           'ewm_fn': 'mean',
+                           'ewm_params': {'com':.5},
+                           'rolling_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target', 'prev1_target_HL5'],
+                           'ewm_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target', 'prev1_target_HL5'],
+                           'join_method': 'outer',
+                           # 'groupby_cols': TICKER_COL,
+                           'copy': False
+                           }
+
+""" move_iar params """
+
+IAR_PARAMS = {'iar_cols': ['move_1d', 'high_move_1d', 'low_move_1d'], 'copy': False}
+
+""" timeseries groupby params """
+
+# TIMESERIES_GROUPBY_PERIODS = ['7d', '21d', '30d']
+
+
+""" feature creation pipeline """
+
+DATA_CLEANER_PARAMS = {
+    'steps': [
+
+        ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),\
+
+        ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET], how='any'))),\
+
+        ('conditional_feature_dropna', FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS))),\
+
+        ('drop_duplicates', FunctionTransformer(lambda df: df.drop_duplicates())),\
+
+        ('sort_df', FunctionTransformer(lambda df: df.sort_values(by=[DATE_COL, TICKER_COL]))),
+
+        ('create_naive_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                               .apply(lambda df: create_naive_features_single_symbol(df, **NAIVE_FEATURES_PARAMS))))
+    ]
+}
+
+FEATURE_CREATION_PARAMS = {
+
+    'steps': [\
+
+        ('create_targets_HL3', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                            .apply(lambda df: CreateTargets(df, copy=False)\
+                                            .create_targets_HL3(**TARGETS_HL3_PARAMS)))),\
+
+        ('create_targets_HL5', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                            .apply(lambda df: CreateTargets(df, copy=False)\
+                                            .create_targets_HL5(**TARGETS_HL5_PARAMS)))),\
+
+        ('lagging_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                          .apply(lambda df: create_lagging_features(df, **LAGGING_FEATURES_PARAMS)))),\
+
+        ('rolling_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                          .apply(lambda df: create_rolling_features(df, **ROLLING_FEATURES_PARAMS)))),\
+
+        ('calc_move_iar', FunctionTransformer(lambda df: df_yahoo.groupby(TICKER_COL, group_keys=False)\
+                                       .apply(lambda df: calc_move_iar(df, **IAR_PARAMS)))),\
+
+        ('convert_dtypes', FunctionTransformer(lambda df: df_yahoo.groupby(TICKER_COL, group_keys=False)\
+                                        .apply(lambda df: convert_df_dtypes(df_yahoo, **CONVERT_DTYPE_PARAMS))))\
+    ]
+
+}
+
+### Main machine-learning feature engineering pipeline ###
 
 FE_pipeline = {
-
-    'custom_fns': make_pipeline(
-
-        FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS)), # drop_nas
-        # FunctionTransformer(lambda df: drop_duplicates(df)), # drop_duplicates
-        FunctionTransformer(lambda df: df.sort_values(by=[DATETIME_COL, TICKER_COL])), # sort values
-
-        ### create naive features ###
-        FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                         .apply(lambda df: create_naive_features(df, **NAIVE_FEATURES_PARAMS))),
-        ### calc_diffs ###
-        # FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False) \
-        #                     .apply(lambda df: calc_diffs(df, **diff_params)),
-
-        ### calc_pct_chg ###
-        # FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False) \
-        #                     .apply(lambda df: calc_pct_changes(df, **pct_change_params)),
-
-        ### CreateTargets ###
-        FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                         .apply(lambda df: CreateTargets(df, copy=False)\
-                                         .create_targets_HL3(**TARGETS_HL3_PARAMS))),
-
-        FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                         .apply(lambda df: CreateTargets(df, copy=False)\
-                                         .create_targets_HL3(**TARGETS_HL5_PARAMS))),
-
-        ### lagging features ###
-        FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                         .apply(lambda df: create_lagging_features(df, **LAGGING_FEATURES_PARAMS))),
-
-        ### rolling features ###
-        FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                         .apply(lambda df: create_rolling_features(df, **ROLLING_FEATURES_PARAMS))),
-
-        ### calc_move_iar ###
-        FunctionTransformer(lambda df: df_yahoo.groupby(TICKER_COL, group_keys=False)\
-                                               .apply(lambda df: calc_move_iar(df, **IAR_PARAMS))),
-
-        ### convert dtypes ###
-        FunctionTransformer(lambda df: df_yahoo.groupby(TICKER_COL, group_keys=False)\
-                                                .apply(lambda df: convert_df_dtypes(df_yahoo, **CONVERT_DTYPE_PARAMS)))
-    ),
 
     'numeric_pipe': make_pipeline(
                         FunctionTransformer(lambda x: x.replace([np.inf, -np.inf], np.nan)),
@@ -105,10 +194,10 @@ FE_pipeline = {
          SimpleImputer(strategy='constant'),
          OneHotEncoder(handle_unknown='ignore')
  )
-
 }
 
 PREPROCESS_FEATURES_PARAMS = {'target': TARGET, 'FE_pipeline_dict': FE_pipeline, 'max_oh_cardinality': 10}
+
 
 ### machine learning params ###
 
