@@ -160,11 +160,11 @@ FEATURE_CREATION_PARAMS = {
         ('rolling_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
                                           .apply(lambda df: create_rolling_features(df, **ROLLING_FEATURES_PARAMS)))),\
 
-        ('calc_move_iar', FunctionTransformer(lambda df: df_yahoo.groupby(TICKER_COL, group_keys=False)\
+        ('calc_move_iar', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
                                        .apply(lambda df: calc_move_iar(df, **IAR_PARAMS)))),\
 
-        ('convert_dtypes', FunctionTransformer(lambda df: df_yahoo.groupby(TICKER_COL, group_keys=False)\
-                                        .apply(lambda df: convert_df_dtypes(df_yahoo, **CONVERT_DTYPE_PARAMS))))\
+        ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                        .apply(lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))\
     ]
 
 }
