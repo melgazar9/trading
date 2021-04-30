@@ -53,11 +53,8 @@ NAIVE_FEATURES_PARAMS = {'open_col': 'open_1d',
                          'new_col_suffix': '_1d',
                          'copy': False}
 
-DIFF_PARAMS_STRING = "{'diff_cols': list(set([i for i in df_numerai.columns for j in ['move', 'pct', 'chg', 'minus'] if j in i])), \
-                       'copy': False}"
-
-PCT_CHG_PARAMS_STRING = "{'pct_change_cols': list(set([i for i in df_numerai.columns for j in ['move', 'pct', 'chg', 'minus', 'diff'] if j in i])),\
-                          'copy': False}"
+DIFF_COLS_STRING = "list(set([i for i in df.columns for j in ['move', 'pct', 'chg', 'minus'] if j in i]))"
+PCT_CHG_COLS_STRING = "list(set([i for i in df.columns for j in ['move', 'pct', 'chg', 'minus', 'diff'] if j in i]))"
 
 DROP_DUPLICATE_ROWS = False
 
@@ -122,29 +119,24 @@ IAR_PARAMS = {'iar_cols': ['move_1d', 'high_move_1d', 'low_move_1d'], 'copy': Fa
 # TIMESERIES_GROUPBY_PERIODS = ['7d', '21d', '30d']
 
 
+
 """ feature creation pipeline """
 
-DATA_CLEANER_PARAMS = {
-    'steps': [
+DATA_CLEANER_PIPE = Pipeline(\
+    steps=[\
+            ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),\
 
-        ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),\
+            ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET], how='any'))),\
 
-        ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET], how='any'))),\
+            # ('conditional_feature_dropna', FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS))),\
 
-        ('conditional_feature_dropna', FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS))),\
+            ('sort_df', FunctionTransformer(lambda df: df.sort_values(by=[DATE_COL, TICKER_COL])))\
+        ]\
+)
 
-        ('drop_duplicates', FunctionTransformer(lambda df: df.drop_duplicates())),\
+FEATURE_CREATION_PARAMS = Pipeline(\
 
-        ('sort_df', FunctionTransformer(lambda df: df.sort_values(by=[DATE_COL, TICKER_COL]))),
-
-        ('create_naive_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                               .apply(lambda df: create_naive_features_single_symbol(df, **NAIVE_FEATURES_PARAMS))))
-    ]
-}
-
-FEATURE_CREATION_PARAMS = {
-
-    'steps': [\
+    steps=[\
 
         ('create_targets_HL3', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
                                             .apply(lambda df: CreateTargets(df, copy=False)\
@@ -166,8 +158,9 @@ FEATURE_CREATION_PARAMS = {
         ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
                                         .apply(lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))\
     ]
+)
 
-}
+
 
 ### Main machine-learning feature engineering pipeline ###
 

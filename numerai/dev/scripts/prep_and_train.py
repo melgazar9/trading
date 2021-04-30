@@ -44,6 +44,37 @@ elif LOAD_DATA_FILEPATH.endswith('csv'):
 if START_DATE:
     df_numerai = df_numerai[df_numerai[DATE_COL] >= START_DATE]
 
+######################
+###### pipeline ######
+######################
+
+# 1. data cleaning
+# 2. feature creation
+# 3. feature transformation
+
+column_transformer = ColumnTransformer(transformers=\
+                                       [('data_cleaner', DATA_CLEANER_PIPE, lambda df: df.columns),\
+
+                                        ('create_naive_features',
+                                         make_pipeline(
+                                             FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                                          .apply(lambda df: create_naive_features_single_symbol(df, **NAIVE_FEATURES_PARAMS)))\
+                                         ),\
+                                         lambda df: df.columns),\
+
+                                        ('calc_diffs',\
+                                         make_pipeline(
+                                             FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                                          .apply(lambda df: calc_diffs(df))))
+                                         ,\
+                                         lambda df: eval(DIFF_COLS_STRING))\
+                                        ],\
+
+                                       n_jobs = NUM_WORKERS,
+                                       remainder='passthrough')
+
+
+
 
 ### data cleaning ###
 
@@ -56,6 +87,18 @@ df_numerai = data_cleaner.transform(df_numerai)
 
 diff_params = eval(DIFF_PARAMS_STRING)
 pct_change_params = eval(PCT_CHG_PARAMS_STRING)
+
+diff_pipe = Pipeline(steps=[\
+    ('calc_diffs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                .apply(lambda df: calc_diffs(df, **diff_params))))
+    ])
+
+pct_pipe = Pipeline(steps = [\
+    ('calc_pct_chgs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                   .apply(lambda df: calc_pct_changes(df, **pct_change_params))))
+    ])
+
+diff_creator = Pipeline()
 
 feature_creator = Pipeline(**FEATURE_CREATION_PARAMS).fit(df_numerai.tail(100000))
 df_numerai = feature_creator.transform(df_numerai)
@@ -79,8 +122,6 @@ X_test, y_test = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][in
 
 # df_train = df_numerai[list(set(input_features + preserve_vars + [TARGET]))]
 
-diff_params = eval(DIFF_PARAMS_STRING)
-pct_change_params = eval(PCT_CHG_PARAMS_STRING)
 PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
 feature_transformer = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
 

@@ -31,7 +31,7 @@ import configparser
 from sklearn.pipeline import Pipeline, make_pipeline
 from category_encoders import TargetEncoder
 from sklearn.impute import MissingIndicator, SimpleImputer
-from sklearn.compose import ColumnTransformer, make_column_selector
+from sklearn.compose import ColumnTransformer, make_column_selector, make_column_transformer
 from category_encoders import TargetEncoder
 from sklearn.impute import MissingIndicator
 from sklearn.preprocessing import FunctionTransformer
