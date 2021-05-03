@@ -112,7 +112,7 @@ def download_yfinance_data(tickers,
 
                 # Go long-to-wide on the min/hour bars
                 try:
-                    df_i['date'] = pd.to_datetime(df_i['Date']).dt.tz_convert(tz_localize_location) # convert the ticker timezone to local
+                    df_i['date'] = pd.to_datetime(df_i['date']).dt.tz_convert(tz_localize_location) # convert the ticker timezone to local
                 except ValueError:
                     pd.to_datetime(df_i['date']).dt.tz_localize(tz_localize_location) # if both don't work there is a problem
 
