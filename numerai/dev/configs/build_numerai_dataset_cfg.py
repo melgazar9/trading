@@ -37,21 +37,16 @@ DOWNLOAD_YFINANCE_DATA_PARAMS = {
 # the below filepath reads the df into memory if DOWNLOAD_YAHOO_DATA == False
 YAHOO_READ_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_init_2021-04-18.feather'
 
-
 """ target params """
 
 TARGET_JOIN_METHOD = 'outer' # Do not set this to inner! An inner join will result in the rolling / lagging features not making any sense!
 TARGET_JOIN_COLS = [DATETIME_COL, TICKER_COL]
-
-NUMERAI_TARGETS_URL = 'https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_train_val_bbg.csv'
 
 """ path params """
 
 INIT_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_init_' + str(datetime.datetime.today().date()) + '.feather'
 FINAL_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather'
 
-""" numerai_competition_data params """
+""" numerai signals params """
 
-DOWNLOAD_NUMERAI_COMPETITION_DATA = False
-LOAD_NUMERAI_COMPETITION_DATA = False
-DF_NUMERAI_COMP_TRAIN_PATH = '/media/melgazar9/HDD_10TB/trading/data/numerai_dataset_255/numerai_training_data.csv' # local
+NUMERAI_TARGETS_URL = 'https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_train_val_bbg.csv'

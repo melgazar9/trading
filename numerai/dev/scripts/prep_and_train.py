@@ -53,27 +53,26 @@ if START_DATE:
 # 3. feature transformation
 
 column_transformer = ColumnTransformer(transformers=\
-                                       [('data_cleaner', DATA_CLEANER_PIPE, lambda df: df.columns),\
+                                       [\
+                                           ('data_cleaner', DATA_CLEANER_PIPE, lambda df: df.columns)#,\
 
-                                        ('create_naive_features',
-                                         make_pipeline(
-                                             FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                                          .apply(lambda df: create_naive_features_single_symbol(df, **NAIVE_FEATURES_PARAMS)))\
-                                         ),\
-                                         lambda df: df.columns),\
-
-                                        ('calc_diffs',\
-                                         make_pipeline(
-                                             FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                                          .apply(lambda df: calc_diffs(df))))
-                                         ,\
-                                         lambda df: eval(DIFF_COLS_STRING))\
+                                            # ('create_naive_features',
+                                            #  make_pipeline(
+                                            #      FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                            #                   .apply(lambda df: create_naive_features_single_symbol(df, **NAIVE_FEATURES_PARAMS)))\
+                                            #  ), lambda df: df.columns),\
+                                            #
+                                            # ('calc_diffs',\
+                                            #  make_pipeline(
+                                            #      FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+                                            #                   .apply(lambda df: calc_diffs(df))))
+                                            #  , lambda df: eval(DIFF_COLS_STRING))\
                                         ],\
 
-                                       n_jobs = NUM_WORKERS,
-                                       remainder='passthrough')
+                                       n_jobs=NUM_WORKERS,
+                                       remainder='passthrough').fit(df_numerai.tail(1000000))
 
-
+# df_tmp = column_transformer.transform(df_numerai.tail(1000000))
 
 
 ### data cleaning ###

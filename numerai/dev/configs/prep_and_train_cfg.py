@@ -124,9 +124,11 @@ IAR_PARAMS = {'iar_cols': ['move_1d', 'high_move_1d', 'low_move_1d'], 'copy': Fa
 
 DATA_CLEANER_PIPE = Pipeline(\
     steps=[\
-            ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),\
+            # ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),\
 
-            ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET], how='any'))),\
+            ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET, 'yahoo_ticker'], how='any'))),\
+
+            ('dropna_cols', FunctionTransformer(lambda df: df.dropna(axis=1, how='any'))),\
 
             # ('conditional_feature_dropna', FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS))),\
 
