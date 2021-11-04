@@ -1,4 +1,4 @@
-sqlDB <- function(sqlQuery, user = Sys.getenv("USER")) {
+run_sql <- function(sqlQuery, user = Sys.getenv("USER")) {
   
   #' @description Runs provided SQL query in mysql on local server and returns results
   #' in a data.table
@@ -76,8 +76,8 @@ train_test_split <- function(dt_full,
                              n_test_days = 30,
                              n_val_days = 30,
                              split_colname = 'dataset_split',
-                             reference_date_col = "firstshipdate",
-                             matured_flag_to_use = "dep_var_matured",
+                             reference_date_col = "datetime",
+                             matured_flag_to_use = "matured",
                              max_dt_col = 'placedat',
                              traintime = NULL) { 
   
@@ -218,102 +218,6 @@ train_test_split <- function(dt_full,
   return(dt_full)
 }
 
-
-pop_team_testset <- function(datain = NULL, master_test_df_schema = "analytics", dep_var = 'fraud',
-                             master_test_df_table = "master_fraud_test_df", split_colname = 'dataset_split',
-                             siteids = c(1, 2, 16), cut_tail = 1) {
-  
-  #' @title Ensures the team test set is not present in any training data
-  #' 
-  #' @description Ensures the team test set is not present in any training data
-  #' 
-  #' @calls pull_master_test_df to pull the master test data
-  #' 
-  #' @param datain data from the pipeline that has at least been passed through a train_test_split function, 
-  #' or had some other process where a training flag is assigned
-  #' @param master_test_df_schema name of schema where the team test set can be found
-  #' @param master_test_df_table name of the table where the test set can be found
-  #' @param data_train_flag name of the training data flag assigned prior to this function being run.  
-  #' Will almost always be "train", but could change in the future
-  #' @param data_test_flag name of any additional, user defined holdout set flag.  Will usually be test, but also may change
-  #' @param siteids site_ids that should be considered when ensuring the team test set isn't present in the data.  
-  #' @param cut_tail = 1, if we want to remove all data that isnt either train, test (user defined), baseline test or baseline validation
-  #'
-  #' @return a data frame with the train/test flag = 0 for all team holdout orders, 
-  #' and two new columns added, baseline_validation_group and baseline_test_group
-  
-  "
-  # -- add inputs
-  This takes as input some data which already has train and test flags assigned, as well as some information about where to find the 
-  master_test_df data we want to verify has been popped from either our train or test set. 
-  A new column will be created which will flag ords that are in the master_test_df set
-  "
-  
-  if(! "RMySQL" %in% installed.packages()) install.packages("RMySQL", depend = TRUE)
-  
-  library("RMySQL")
-  
-  lapply(dbListConnections(RMySQL::MySQL()), dbDisconnect)
-  
-  #pulling the master_test_df data
-  my_holdouts <- pull_master_test_df(table_schema_in = master_test_df_schema, table_name_in = master_test_df_table)
-  
-  #limiting the holdout ords to just a specific site, if necessary, and then splitting them out into two subsets for easier readibility downstream
-  site_specific_holdouts <- my_holdouts[my_holdouts$siteid %in% siteids, ]
-  my_holdout_validation_ords <- unique(filter(site_specific_holdouts, baseline_validation_group == 1)$orderid)
-  my_holdout_test_ords <- unique(filter(site_specific_holdouts, baseline_test_group == 1)$orderid)
-  
-  #if our provided validation/test set orders were in either the train or test portions, remove the train/test flags on those orders
-  datain$baseline_group <- 'None'
-  #setting two new flags, one for baseline_test and one for baseline_validation
-  datain[which(datain$orderid %in% my_holdout_validation_ords), "baseline_group"] <- 'val'
-  datain[which(datain$orderid %in% my_holdout_test_ords), "baseline_group"] <- 'test'
-  
-  datain[which(datain$baseline_group == 'val' & datain[[split_colname]] == 'train'), split_colname] <- 'val'
-  datain[which(datain$baseline_group == 'test' & datain[[split_colname]] == 'train'), split_colname] <- 'test'
-  
-  if(cut_tail) {
-    datain <- datain[which(datain[[split_colname]] %in% c('train', 'val', 'test') | datain$baseline_group %in% c('val', 'test')), ]
-  }
-  setDT(datain)
-  summary_dt <- 
-    datain[, .(min_placedat = min(placedat) %>% as.Date,
-               max_placedat = max(placedat) %>% as.Date,
-               distinct_dates = uniqueN(as.Date(placedat)),
-               n_orders = .N,
-               n_dep_var = sum(as.integer(as.character(get(dep_var))))
-    ), 
-    by = c(split_colname, 'baseline_group')
-    ][,
-      pct_dep_var := n_dep_var / n_orders * 100
-      ]
-  
-  
-  final_col_names <- summary_dt %>% names %>% stringr::str_replace("dep_var", dep_var)
-  setnames(summary_dt, final_col_names)
-  ds_print(summary_dt, cat = F)
-  
-  
-  return(datain)
-}
-
-
-pull_master_test_df <- function(table_schema_in = "analytics", table_name_in = "master_test_df") {
-  
-  #' @title pulls the test data
-  #' @description Pulls the test data from the specified path
-  #' @param table_schema_in name of schema where the team test set can be found
-  #' @param table_name_in name of the table where the test set can be found
-  #' @return set of test data with a few key fields included
-  
-  w <- dbConnect(MySQL(), dbname = table_schema_in)
-  pull_master_test_df <- paste0("SELECT * FROM ", table_name_in, ";")
-  master_test_df_data <- dbGetQuery(w, pull_master_test_df)
-  dbDisconnect(w)
-  
-  return(master_test_df_data)
-  
-}
 
 train_model <- function(algorithm, train_data, target, features, matrix_needed_algos = c('xgboost', 'glmnet', 'glm'), seed = 100) {
   
