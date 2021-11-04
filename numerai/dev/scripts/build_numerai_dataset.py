@@ -9,6 +9,8 @@ from IPython.display import display
 from datetime import datetime
 import time
 import numerapi
+import vaex as vx
+
 
 start_time = time.time()
 
@@ -47,34 +49,107 @@ ticker_map = download_ticker_map(napi, **DOWNLOAD_VALID_TICKERS_PARAMS)
 
 if DOWNLOAD_YAHOO_DATA:
     if VERBOSE: print('****** Downloading yfinance data ******')
+
+    # DOWNLOAD_YFINANCE_DATA_PARAMS['tickers'] = ['FB', 'AMZN', 'AAPL', 'TSLA', 'MSFT', 'NVDA'] # for debugging
+
     if 'tickers' not in DOWNLOAD_YFINANCE_DATA_PARAMS.keys():
-        df_yahoo = download_yfinance_data(tickers=ticker_map['yahoo'].tolist(), **DOWNLOAD_YFINANCE_DATA_PARAMS) # all valid yahoo tickers
-    else:
-        df_yahoo = download_yfinance_data(**DOWNLOAD_YFINANCE_DATA_PARAMS)
+        DOWNLOAD_YFINANCE_DATA_PARAMS['tickers'] = ticker_map['yahoo'].tolist() # all valid yahoo finance tickers
+
+    dfs = download_yfinance_data(**DOWNLOAD_YFINANCE_DATA_PARAMS)
+
 else:
-    # read in file
+    # load in data
     if YAHOO_READ_FILEPATH.lower().endswith('pq') or YAHOO_READ_FILEPATH.lower().endswith('parquet'):
         df_yahoo = dd.read_parquet(YAHOO_READ_FILEPATH, DASK_NPARTITIONS=DASK_NPARTITIONS).compute()
     elif YAHOO_READ_FILEPATH.lower().endswith('feather'):
         df_yahoo = pd.read_feather(YAHOO_READ_FILEPATH)
-# df_yahoo = df_yahoo.tail(1000000)# debugging
+    elif YAHOO_READ_FILEPATH.lower().lower().endswith('pkl'):
+        dfs = dill.load(open(YAHOO_READ_FILEPATH, 'rb'))
+
+### save dfs after initial download ###
+
+if INIT_SAVE_FILEPATH is not None and (INIT_SAVE_FILEPATH.lower().endswith('pkl') or INIT_SAVE_FILEPATH.lower().endswith('pickle')):
+    dill.dump(dfs, open(INIT_SAVE_FILEPATH, 'wb'))
 
 if VERBOSE: print(df_yahoo.info())
+
 gc.collect()
+
+
+### join the dfs in the dfs dictionary ###
+
+if NUM_WORKERS == 1:
+    for i in dfs.keys():
+        dfs[i]['DATE_COL'] = pd.to_datetime(dfs[i]['DATE_COL'], utc=True)
+        dfs[i].sort_values(by=DATETIME_COL, inplace=True)
+else:
+    pool = mp.Pool()
+    pool.map(f, range(10))
+
+gc.collect()
+
+df_yahoo = reduce(lambda df1, df2: \
+                      JOIN_DFS_PARAMS['join_function'](df1,\
+                                                       df2[[i for i in df2.columns if not i in [YAHOO_TICKER_COL, DATETIME_COL + '_localized']]],\
+                                                       **{k: JOIN_DFS_PARAMS[k] for k in [i for i in JOIN_DFS_PARAMS.keys() if not i == 'join_function']}),
+                  list(dfs.values()))
+
+# reduce(lambda x,y: pd.merge(x, y, **JOIN_DFS_PARAMS))
+
+
+
+### test if [yahoo_ticker_col + datetime] makes a unique index ###
+
+if USE_VAEX: df_yahoo = vx.from_pandas(df_yahoo)
+
+datetime_ticker_cat_init = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[YAHOO_TICKER_COL].astype(str)).tolist()
+if VERBOSE: print('datetime_ticker_cat before: ' + str(len(datetime_ticker_cat_init)))
+
+if GROUPBY_TICKER_DATE_AFTER_DOWNLOAD and len(datetime_ticker_cat_init) != len(set(datetime_ticker_cat_init)):
+
+    gc.collect()
+    groupby_params = {} if USE_VAEX else {'observed': True}
+    if N_GROUPBY_CHUNKS > 1:
+
+        # since the above two approaches kill the memory, I will chunk the groupby into yahoo_ticker groups
+        unique_tickers = df_yahoo[YAHOO_TICKER_COL].unique()
+        ticker_chunks = [i for i in split_list(lst=unique_tickers, n=int(len(unique_tickers) / N_GROUPBY_CHUNKS))][0]
+
+        list_of_dfs = []
+        for chunk in ticker_chunks:
+            list_of_dfs.append(df_yahoo[df_yahoo[YAHOO_TICKER_COL].isin(chunk)]\
+                               .groupby([DATETIME_COL, YAHOO_TICKER_COL], **groupby_params)\
+                               .first()\
+                               .reset_index())
+
+        df_yahoo = pd.concat(list_of_dfs, axis=0)
+        del list_of_dfs
+    else:
+        # the below syntax does not work with vaex, and pandas groupby runs out of memory
+        df_yahoo = df_yahoo.groupby(by=[DATETIME_COL, YAHOO_TICKER_COL], **groupby_params).first().reset_index()
+
+        # the below syntax works with vaex, but vaex also runs out of memory
+        # df_yahoo = df_yahoo.groupby(by=[DATETIME_COL, YAHOO_TICKER_COL]).agg({i: 'min' for i in df_yahoo.columns if i not in [DATETIME_COL, YAHOO_TICKER_COL, TICKER_COL]})
+del datetime_ticker_cat_init
+
+### create bloomberg ticker ###
 
 if CREATE_BLOOMBERG_TICKER_FROM_YAHOO or DOWNLOAD_YAHOO_DATA:
     if 'ticker' in df_yahoo.columns:
-        df_yahoo.rename(columns={'ticker': 'yahoo_ticker'}, inplace=True)
-    df_yahoo.loc[:, 'bloomberg_ticker'] = df_yahoo['yahoo_ticker'].map(dict(zip(ticker_map['yahoo'], ticker_map['bloomberg_ticker'])))
+        df_yahoo.rename(columns={'ticker': YAHOO_TICKER_COL}, inplace=True)
+    df_yahoo.loc[:, 'bloomberg_ticker'] = df_yahoo[YAHOO_TICKER_COL].map(dict(zip(ticker_map['yahoo'], ticker_map['bloomberg_ticker'])))
 
-### Ensure no [DATETIME_COL, TICKER_COL] are duplicated. If so then there is an issue. ###
+
+### ensure no [DATETIME_COL, TICKER_COL] are duplicated ###
+# If there are any duplicates in datetime_ticker_cat_after at this point, and when GROUPBY_TICKER_DATE_AFTER_DOWNLOAD is set to True),
+# then there is a bug in at least one of the above functions
 
 print('\nvalidating unique date + ticker index...\n')
 if DROP_NULL_TICKERS: df_yahoo.dropna(subset=[TICKER_COL], inplace=True)
 
-datetime_ticker_cat = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[TICKER_COL].astype(str)).tolist()
-assert len(datetime_ticker_cat) == len(set(datetime_ticker_cat)), 'TICKER_COL and DATETIME_COL do not make a unique index!'
-del datetime_ticker_cat
+datetime_ticker_cat_after = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[TICKER_COL].astype(str)).tolist()
+assert len(datetime_ticker_cat_after) == len(set(datetime_ticker_cat_after)), 'TICKER_COL and DATETIME_COL do not make a unique index!'
+del datetime_ticker_cat_after
 
 print('\nreading targets...\n')
 
@@ -94,22 +169,25 @@ df_yahoo = pd.merge(df_yahoo, targets, on=TARGET_JOIN_COLS, how=TARGET_JOIN_METH
 
 del targets # reduce memory
 
+
 ### save memory ###
 
 if CONVERT_DF_DTYPES:
     print('\nconverting dtypes...\n')
     df_yahoo = convert_df_dtypes(df_yahoo, **CONVERT_DTYPE_PARAMS)
 
+
 ### Save df ###
 
 print('\nsaving df build...\n')
 if FINAL_SAVE_FILEPATH.endswith('feather'):
-    if 'date' in df_yahoo.index.names or 'ticker' in df_yahoo.index.names:
+    if 'date' in df_yahoo.index.names or YAHOO_TICKER_COL in df_yahoo.index.names:
         df_yahoo.reset_index().to_feather(FINAL_SAVE_FILEPATH)
     else:
         df_yahoo.reset_index(drop=True).to_feather(FINAL_SAVE_FILEPATH)
 elif FINAL_SAVE_FILEPATH.endswith('pq') or FINAL_SAVE_FILEPATH.endswith('parquet'):
     df_yahoo.to_parquet(FINAL_SAVE_FILEPATH)
+
 
 end_time = time.time()
 

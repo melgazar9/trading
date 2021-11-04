@@ -231,7 +231,7 @@ class PullHistoricalData():
                 # default return is json --- there is an option 'datatype' to return csvs but it is broken
                 try:
                     df_indicator_dict_i = getattr(self.api_client, list(indicator_dict.keys())[0])(**indicator_dict[list(indicator_dict.keys())[0]],
-                                                                                                   symbol = s) # call the api
+                                                                                                   symbol=s) # call the api
                     df_indicator_i = df_indicator_dict_i[0]
                     df_indicator_i = df_indicator_i.add_prefix(df_indicator_dict_i[1]['1: Symbol'] + '_')
                 except ValueError:

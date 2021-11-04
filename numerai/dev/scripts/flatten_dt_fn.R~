@@ -1,0 +1,263 @@
+# Creates the Flattening Function
+
+flatten_dt <- function(DT,
+                       
+                       unique_id_col, 
+                       datatable_expression = NULL,
+                       
+                       # dcast pivoting params
+                       value.var = NULL, 
+                       fun.aggregate = NULL,
+                       rhs_cols = NULL,
+                       
+                       # other params
+                       feature_prefix = NULL,
+                       clean_col_names = T,
+                       additional_datatable_expression = NULL,
+                       copy_dt = F,
+                       verbose = T) {
+  
+  #' @title Flatten a Data.Table 
+  #' 
+  #' @description Supported Flattening Methods (DATA-475)
+  #' 
+  #'   Select One Row / Value 
+  #'        using a certain condition per merge_col
+  #'        params to use: datatable_expression
+  #'   Pivot Rows W/O Aggregation 
+  #'        Example: order has 3 items on it. this will create 3 sets of columns for each row
+  #'          aggregation doesn't make sense
+  #'        params to use: rhs_cols but not value.var or fun.aggregate
+  #'   Counting Distinct Values 
+  #'       for all columns, exclude NAs 
+  #'       params to use: datatable_expression
+  #'   Pivot w/ Value Counts
+  #'       pivot categorical columns by counting their values w/ the length fn
+  #'       params to use: rhs_cols and fun.aggregate = length
+  #'   Grouped String Concatenation 
+  #'       for highly-cardinal, categorical "row" data, concatenate the values into a single cell per order
+  #'       let the recipe parse the concatenation using step_count or case_when or TF-IDF
+  #'       params to use: datatable_expression
+  #'   Pivot & Aggregate
+  #'       continuous columns by categorical columns
+  #'       params to use: fun.aggregate and probably rhs_cols and value.var too
+  #'   No Flattening 
+  #'       don't use datatable_expression, fun.aggregate, rhs_cols or value.var
+  #'   Custom Flattening on certain columns
+  #'       use additional_datatable_expression to run an aggregation on certain columns after the main flattening is finished
+  #'       The custom flattened DT will be inner joined by unique_id_col to the flattened DT
+  #'       
+  #' @param DT data.table 
+  #' @param unique_id_col The name of the column whose values are the intended output granularity of the flattening process. 
+  #'                      stopifnot is will be tripped if this column does NOT become a unique key in the output DT
+  #' @param datatable_expression an expression to be evaluated. Must use "DT" and return a data.table
+  #' 
+  #' DCAST PARAMETERS
+  #' IF value.var, fun.aggregate OR rhs_cols IS NOT NULL, the dcast function will run.
+  #' @param value.var Name of the column whose values will be filled to cast. Function guess() tries to, well, guess this column automatically, if none is provided.
+  #'                  Cast multiple value.var columns simultaneously by passing their names as a character vector. 
+  #'                  ***IF fun.aggregate & value.var are NULL but not rhs_col, this will trigger what I call Non-Aggregation Mode.***
+  #' @param fun.aggregate Should the data be aggregated before casting?
+  #'                      If the formula doesn't identify a single observation for each cell, then aggregation defaults to length with a message. 
+  #' @param rhs_cols a character vector of column names that will occupy the right-hand-side of the dcast formula
+  #' 
+  #' @param feature_prefix if not NULL, a prefix will be appended to all outputted column names
+  #' @param clean_col_names if T, janitor::make_clean_names is used to reformat column names
+  #' @param additional_datatable_expression if NULL do nothing.
+  #'        If not null, run this additional datatable expression and inner join the output to the flattened DT
+  #' @param copy_dt it's good to make a copy of the input DT if debugging 
+  #' @param verbose should the printing print?
+  #' 
+  #' @return a flattened data.table 
+  #' 
+  #' list2env(flatten_dt_params, globalenv()); rm(DT)
+  
+  ### 1. Input Validations ###
+  
+  if (copy_dt) DT <- data.table::copy(DT) # it's good to make a copy if debugging 
+  if (verbose) cat("\n\nInput\n"); print_dt_dims(DT)
+  if (nrow(DT) == 0) {
+    cat("\n\nDT has no rows at all!\n\n")
+    return(DT) # is this the right action???????
+  }
+  
+  stopifnot(unique_id_col %in% names(DT))
+  
+  ### 2. Additional datatable expression ###
+  
+  if (!is.null(additional_datatable_expression)) {
+    if (verbose) ds_print("\n", additional_datatable_expression)
+    DT_summary <- eval(parse(text = additional_datatable_expression))
+    data.table::setkeyv(DT_summary, unique_id_col)
+    ds_print("\n\nPost-Data.Table Expression\n"); print_dt_dims(DT_summary)
+  }
+  
+  # used to validate that the flattening doesn't drop any ordersids
+  inputted_unique_id_col_values <- unique(DT[[unique_id_col]]) 
+  
+  
+  ### 3. Run data.table expression ###
+  
+  if (!is.null(datatable_expression)) {
+    if (verbose) cat("\n", datatable_expression)
+    DT <- eval(parse(text = datatable_expression))
+    cat("\n\nPost-Data.Table Expression\n"); print_dt_dims(DT)
+  }
+  
+  ### 4. Run Dcast ###
+  
+  # one of these params is provide, then run the dcast fn
+  if (length(c(value.var, fun.aggregate, rhs_cols))) {
+    
+    if (verbose) cat("\n\nLet's do some dcasting!\n")
+    
+    # Validations
+    stopifnot(all(c(unique_id_col, value.var, rhs_cols) %in% names(DT)))
+    
+    ### A. Set Up Formula ###
+    
+    rhs <- if(is.null(rhs_cols)) "." else paste(rhs_cols, collapse = "+")
+    dcast_formula <- as.formula(paste(unique_id_col, "~", rhs))
+    if (verbose) ds_print(dcast_formula, cat = F) # cat doesn't work on a formula data type
+    
+    ### B. Set Up Non-Aggregation Mode ###
+    
+    if (is.null(fun.aggregate)) {
+      
+      if (verbose) cat("Running in Non-Aggregation Mode. All rows will become columns w/ their own values")
+      if (!is.null(value.var)) warning("non.aggregate is NULL but not value.var. This has unintended consequences in the following line of code.")
+      value.var <- DT %>% names %>% setdiff(., c(unique_id_col, value.var, rhs_cols))
+      
+      # row_num ensures no aggregation if the rhs_cols values aren't unique. 
+      # if the rhs_cols values aren't unique, row_num will be added as a suffix to the column name instead of the rhs_cols. 
+      # it doesn't become a feature itself
+      DT[, row_num := 1:.N, by = unique_id_col]
+      
+    } 
+    
+    
+    ### C. Estimate Dimensionality ###
+    if (verbose) print_estimated_dims(DT, fun.aggregate, value.var, rhs_cols)
+    
+    ### D. Call Dcast ###
+    
+    # do.call & dcast have some WEIRD interactions! see my notes
+    DT <-
+      # in this list, DO NOT USE the named parameters for "data" or "formula". 
+      # do.call & dcast thinks they are functions instead of parameters.
+      list(DT, dcast_formula, fun.aggregate = fun.aggregate, value.var = value.var) %>% 
+      purrr::discard(is.null) %>% # do.call & dcast fail if you don't discard the parameters containing NULL
+      {do.call(dcast.data.table, .)}
+    
+  }
+  
+  
+  ### 5. Output Validations & Column-Name Cleaning ###
+  
+  outputted_unique_id_col_values <- unique(DT[[unique_id_col]])
+  
+  stopifnot(dplyr::setequal(inputted_unique_id_col_values, outputted_unique_id_col_values))
+  stopifnot(!anyDuplicated(DT[[unique_id_col]]))
+  
+  if (!is.null(feature_prefix)) {
+    # append prefix
+    old_feature_names <- DT %>% names %>% setdiff(., unique_id_col)
+    new_feature_names <- paste(feature_prefix, sep = "_", old_feature_names)
+    data.table::setnames(DT, old_feature_names, new_feature_names)
+  }
+  
+  # clean the column names
+  if (clean_col_names) data.table::setnames(DT, janitor::make_clean_names(names(DT)))
+  
+  if (verbose) ds_print("\n\nOutput\n"); print_dt_dims(DT)
+  
+  data.table::setkeyv(DT, unique_id_col)
+  
+  
+  ### 6. Finally, if additional_datatable_expression is ran, merge the output back to the flattened DT ###
+  
+  if (!is.null(additional_datatable_expression)) {
+    DT <- merge.data.table(DT, DT_summary, by = unique_id_col)
+    data.table::setkeyv(DT, unique_id_col)
+  }
+  
+  return(DT)
+}
+
+
+###################### Production ######################
+
+
+full_outer_join_dts <- function(dt_list, merge_cols, drop_duplicate_colnames = T){
+  
+  #' @title Full Outter Join a List of Data.Tables
+  #' 
+  #' @description This fn will need to be used in production after all of the flattening occurs
+  #' 
+  #' @param dt_list a list of data.tables
+  #' @param merge_cols the name of the column to join on
+  #' 
+  #' @return a single data.table 
+  #'
+  stopifnot(all(sapply(dt_list, data.table::is.data.table)))
+  stopifnot(all(sapply(dt_list, function(DT) merge_cols %in% names(DT))))
+  dt_out <- Reduce(function(dt1, dt2) {
+    if (drop_duplicate_colnames) {
+      dt2 <- dt2[, c(merge_cols, names(dt2)[!names(dt2) %in% names(dt1)]), with = F]
+    }
+    merge(dt1, dt2, by = merge_cols, all = T)
+    }, dt_list)
+  return(dt_out)
+  
+}
+
+
+###################### Logging ######################
+
+
+print_dt_dims <- function(DT) {
+  
+  #' @title Print the Number of Rows, Columns & GB
+  #' 
+  #' @param DT a data.frame or data.table
+  #' 
+  #' @return nothing
+  
+  ds_print("\nDimensions\nN rows & columns:\n", dim(DT), "\n") 
+  print(object.size(DT), units = "GB")
+  
+  
+}
+
+print_estimated_dims <- function(DT, fun.aggregate, value.var, rhs_cols){
+  #' @title Estimate how many columns will be created by dcast
+  #' 
+  #' Rule of Thumb: 
+  #'     in most cases, the number of columns in outputted dcast DT will be 
+  #'     the product of the lengths of fun.aggregate, value.var & the unique combinations created by the values in the rhs_cols
+  #'     if any of the lengths are 0, use 1 instead.
+  #' 
+  #' @param DT the DT from flatten_dt
+  #' @param fun.aggregate param from flatten_dt and dcast
+  #' @param value.var param from flatten_dt and dcast
+  #' @param rhs_cols param from flatten_dt and dcast
+  #' 
+  #' @return nothing
+  
+  try({
+    
+    estimation_dt <- 
+      list(
+        n_fun.aggregate = max(length(fun.aggregate), 1),
+        n_value.var = max(length(value.var), 1),
+        n_rhs_cols = {if (is.null(rhs_cols)) 1 else max(uniqueN(DT[, ..rhs_cols]), 1)}
+      ) %>% 
+      {purrr::list_modify(., n_estimated_dcast_cols = prod(unlist(.)) + 1)} %>% # plus one for the unique_id_col
+      stack() %>% 
+      data.table::data.table()
+    
+    ds_print("\nEstimated N dcast columns:\n")
+    print(estimation_dt)
+    
+  })
+}

@@ -10,15 +10,15 @@ DATE_COL = 'date'
 TICKER_COL = 'bloomberg_ticker'
 DROP_NA_TARGETS = True
 VERBOSE = True
-START_DATE = '2005-01-01'
+START_DATE = '2015-01-01'
 
 ### path params ###
 
 SAVE_FEATURE_TRANSFORMER = False
 SAVE_OBJECT = False
 
-LOAD_DATA_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_2021-04-28.feather'
-OBJECT_OUTPATH = '/media/melgazar9/HDD_10TB/trading/objects/'
+LOAD_DATA_FILEPATH = 'D:/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_2021-04-28.feather'
+OBJECT_OUTPATH = 'D:/trading/objects/'
 
 ### feature params ###
 
@@ -128,7 +128,7 @@ DATA_CLEANER_PIPE = Pipeline(\
 
             ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET, 'yahoo_ticker'], how='any'))),\
 
-            ('dropna_cols', FunctionTransformer(lambda df: df.dropna(axis=1, how='any'))),\
+            ('dropna_cols', FunctionTransformer(lambda df: df.dropna(axis=1, how='all'))),\
 
             # ('conditional_feature_dropna', FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS))),\
 

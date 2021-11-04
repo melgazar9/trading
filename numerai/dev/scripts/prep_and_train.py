@@ -69,8 +69,8 @@ column_transformer = ColumnTransformer(transformers=\
                                             #  , lambda df: eval(DIFF_COLS_STRING))\
                                         ],\
 
-                                       n_jobs=NUM_WORKERS,
-                                       remainder='passthrough').fit(df_numerai.tail(1000000))
+                                       n_jobs=1,
+                                       remainder='passthrough').fit(df_numerai)
 
 # df_tmp = column_transformer.transform(df_numerai.tail(1000000))
 

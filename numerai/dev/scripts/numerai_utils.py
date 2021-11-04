@@ -10,11 +10,11 @@ import datetime
 def download_yfinance_data(tickers,
                            intervals_to_download=['1d', '1h'],
                            num_workers=1,
-                           join_method='outer',
                            max_intraday_lookback_days=363,
                            n_chunks=600,
                            tz_localize_location='US/Central',
                            yfinance_params={},
+                           yahoo_ticker_colname='yahoo_ticker',
                            verbose=True):
     """
 
@@ -27,11 +27,6 @@ def download_yfinance_data(tickers,
     intervals_to_download : list of intervals to download OHLCV data for each stock (e.g. ['1w', '1d', '1h'])
     num_workers: number of threads used to download the data
         so far only 1 thread is implemented
-    join_method: can be 'inner', 'left', 'right' or 'outer'
-        if 'outer' then all dates will be present
-        if 'left' then all dates from the left table will be present
-        if 'right' then all dates from the right table will be present
-        if 'inner' then all dates must match for each ticker
     n_chunks: int number of chunks to pass to yfinance.download()
         1 is the slowest but most reliable because if two are passed and one fails, then both tickers are not returned
     tz_localize_location: timezone location to set the datetime
@@ -41,22 +36,23 @@ def download_yfinance_data(tickers,
 
     NOTE: passing some intervals return unreliable stock data (e.g. '3mo' returns many NA data points when they should not be NA)
     """
+
     if not 'start' in yfinance_params.keys():
         if verbose: print('*** yfinance params start set to 2005-01-01! ***')
         yfinance_params['start'] = '2005-01-01'
-    if not 'threads' in yfinance_params.keys():
+    if not 'threads' in yfinance_params.keys() or yfinance_params['threads'] != True:
         if verbose: print('*** yfinance params threads set to False! ***')
         yfinance_params['threads'] = False
     if not verbose:
         yfinance_params['progress'] = False
 
     intraday_lookback_days = datetime.datetime.today().date() - datetime.timedelta(days=max_intraday_lookback_days)
+
     start_date = yfinance_params['start']
 
     if num_workers == 1:
 
-        list_of_dfs = []
-
+        dict_of_dfs = {}
         for i in intervals_to_download:
 
             yfinance_params['interval'] = i
@@ -68,31 +64,31 @@ def download_yfinance_data(tickers,
 
                 df_i = yfinance.download(' '.join(tickers), **yfinance_params)\
                                .stack()\
-                               .rename_axis(index=['date', 'yahoo_ticker'])\
+                               .rename_axis(index=['date', yahoo_ticker_colname])\
                                .add_suffix('_' + i)\
                                .reset_index()
             else:
-
                 ticker_chunks = [' '.join(tickers[i:i+n_chunks]) for i in range(0, len(tickers), n_chunks)]
                 chunk_dfs_lst = []
-                column_order = ['date', 'yahoo_ticker', 'Adj Close', 'Close', 'High', 'Low', 'Open', 'Volume']
+                column_order = ['date', yahoo_ticker_colname, 'Adj Close', 'Close', 'High', 'Low', 'Open', 'Volume']
                 for chunk in ticker_chunks:
                     try:
                         if n_chunks == 1 or len(chunk.split(' ')) == 1:
                             df_tmp = yfinance.download(chunk, **yfinance_params)\
                                              .rename_axis(index='date')\
                                              .reset_index()
-                            df_tmp['yahoo_ticker'] = chunk
+                            df_tmp[yahoo_ticker_colname] = chunk
                             df_tmp = df_tmp[column_order]
-                            df_tmp.columns = df_tmp.columns.map(lambda c: c + '_' + i if c != 'date' and c != 'yahoo_ticker' else c)
+                            df_tmp.columns = df_tmp.columns.map(lambda c: c + '_' + i if c != 'date' and c != yahoo_ticker_colname else c)
                         else:
                             # should be the order of column_order
                             df_tmp = yfinance.download(chunk, **yfinance_params) \
                                 .stack() \
                                 .add_suffix('_' + i) \
-                                .rename_axis(index=['date', 'yahoo_ticker']) \
+                                .rename_axis(index=['date', yahoo_ticker_colname]) \
                                 .reset_index()
-                            df_tmp = df_tmp[column_order]
+                            new_column_order = ['date', yahoo_ticker_colname] + [x + '_' + i for x in column_order if not x in ['date', yahoo_ticker_colname]]
+                            df_tmp = df_tmp[new_column_order]
                         chunk_dfs_lst.append(df_tmp)
                     except simplejson.errors.JSONDecodeError:
                         pass
@@ -102,120 +98,25 @@ def download_yfinance_data(tickers,
                 yfinance_params['start'] = start_date
 
             # set UTC to True because we're pulling data from all over the world, and pandas cannot convert Tz-aware datetimes unless UTC is true
-            if i == '1d':
-                df_i['date'] = pd.to_datetime(df_i['date']).dt.tz_localize(tz_localize_location)
+            if i == '1d' and type(tz_localize_location) == str:
+                df_i['date_localized'] = pd.to_datetime(df_i['date']).dt.tz_localize(tz_localize_location)
             elif i == '1h':
 
-                # date will be dtype object after concat
-                #    because when pulling hour data from yfinance the date
-                #    is tz_localized to the location of that specific ticker
+                # date will be dtype object after concat because when pulling hour data from yfinance the date
+                # is tz_localized to the location of that specific ticker
 
-                # Go long-to-wide on the min/hour bars
                 try:
-                    df_i['date'] = pd.to_datetime(df_i['date']).dt.tz_convert(tz_localize_location) # convert the ticker timezone to local
+                    df_i['date_localized'] = pd.to_datetime(df_i['date']).dt.tz_convert(tz_localize_location) # convert the ticker timezone to local
                 except ValueError:
-                    pd.to_datetime(df_i['date']).dt.tz_localize(tz_localize_location) # if both don't work there is a problem
+                    df_i['date_localized'] = pd.to_datetime(df_i['date'], utc=True).dt.tz_convert(tz_localize_location) # if both don't work there is a problem
 
-                df_i = df_i.pivot_table(index=[df_i['date'].dt.date, 'yahoo_ticker'],
-                                        columns=[df_i['date'].dt.hour],
-                                        aggfunc='first',
-                                        values=[i for i in df_i.columns if not i in ['date', 'yahoo_ticker']])
-                df_i.columns = list(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in df_i.columns.tolist()]).str.replace(' ', '_'))
                 df_i.reset_index(inplace=True)
-                df_i['date'] = pd.to_datetime(df_i['date']).dt.tz_localize(tz_localize_location) # pivot table changes 'date' to an object dtype
 
             df_i.columns = [str(col).replace(' ', '_').lower() for col in df_i.columns]
-            list_of_dfs.append(df_i)
+            dict_of_dfs[i] = df_i
 
-        df_yahoo = reduce(lambda x, y: pd.merge(x, y, how=join_method, on=['date', 'yahoo_ticker']), list_of_dfs)
+    return dict_of_dfs
 
-        ### quality check to ensure date + ticker is unique ###
-
-        date_plus_ticker_before = df_yahoo['date'].astype(str) + df_yahoo['yahoo_ticker'].astype(str)
-
-        if len(set(date_plus_ticker_before)) != len(date_plus_ticker_before):
-            if verbose: print('nrows before: ', len(date_plus_ticker_before))
-            df_yahoo = df_yahoo.groupby(['date', 'yahoo_ticker']).first().reset_index()
-            date_plus_ticker_after = df_yahoo['date'].astype(str) + df_yahoo['yahoo_ticker'].astype(str)
-            if verbose: print(len(date_plus_ticker_before) - len(date_plus_ticker_after), \
-                              ' rows dropped out of ', len(date_plus_ticker_before), \
-                              ' (', round((len(date_plus_ticker_before) - len(date_plus_ticker_after)) / \
-                                          len(date_plus_ticker_before), 5), '%)')
-            del date_plus_ticker_before
-            assert len(date_plus_ticker_after) == len(set(date_plus_ticker_after)), i + ' date + yahoo_ticker is not unique in df_yahoo!'
-
-    else:
-        print('****** Multi-threading is not fully implemented yet!! Set num_workers=1 for a reliable data pull. ******')
-        if verbose: print(' *** Pulling yfinance data using', num_workers, 'threads! ***')
-        list_of_dfs = []
-        chunk_len = len(tickers) // num_workers
-        ticker_chunks = [' '.join(tickers[i:i+chunk_len]) for i in range(0, len(tickers), chunk_len)]
-
-        for i in intervals_to_download:
-
-            yfinance_params['interval'] = i
-
-            if (i.endswith('m') or i.endswith('h')) and (pd.to_datetime(yfinance_params['start']) < intraday_lookback_days):
-
-                yfinance_params['start'] = str(intraday_lookback_days)
-
-            if yfinance_params['threads'] == True:
-
-                if verbose: print('Parallelizing using both dask and yfinance threads - some yahoo_tickers may return a JSONDecodeError. If so, set threads to False in yfinance_params')
-
-                delayed_list = [delayed(yfinance.download)(' '.join(chunk), **yfinance_params)\
-                                                              .stack()\
-                                                              .rename_axis(index=['date', 'yahoo_ticker'])\
-                                                              .add_suffix('_' + i)\
-                                                              .reset_index()\
-                                for chunk in ticker_chunks]
-            else:
-
-                if verbose: print('Running safer-parallel')
-
-                def safe_yfinance_pull(ticker_chunks, yfinance_params):
-
-                    chunk_dfs_lst = []
-
-                    for chunk in ticker_chunks:
-                        try:
-                            df_tmp = yfinance.download(chunk, **yfinance_params)\
-                                             .stack()\
-                                             .rename_axis(index=['date', 'yahoo_ticker'])\
-                                             .add_suffix('_' + i)\
-                                             .reset_index()
-                            chunk_dfs_lst.append(df_tmp)
-                        except simplejson.errors.JSONDecodeError:
-                            pass
-                        if len(chunk) == 1:
-                            df_tmp['yahoo_ticker'] = chunk[0]
-                    df_out = pd.concat(chunk_dfs_lst)
-                    return df_out
-
-                delayed_list = [delayed(safe_yfinance_pull)(chunk, yfinance_params) for chunk in ticker_chunks]
-
-            tuple_of_dfs = dask.compute(*delayed_list, num_workers=num_workers)
-
-            df_i = reduce(lambda x, y: pd.merge(x, y, how=join_method, on=['date', 'yahoo_ticker']), tuple_of_dfs)
-            del tuple_of_dfs
-            yfinance_params['start'] = start_date
-
-            if i.endswith('m') or i.endswith('h'):
-
-                # Go long-to-wide on the min/hour bars
-                df_i = df_i.pivot_table(index=[df_i['date'].dt.date, 'yahoo_ticker'], columns=[df_i['date'].dt.hour], aggfunc='first',
-                                        values=[i for i in df_i.columns if not i in ['date', 'yahoo_ticker']])
-                df_i.columns = list(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in df_i.columns.tolist()]).str.replace(' ', '_'))
-                df_i.reset_index(inplace=True)
-                df_i['date'] = pd.to_datetime(df_i['date']).dt.tz_localize(tz_localize_location) # pivot table sets the index, and reset_index changes 'date' to an object
-
-            df_i.columns = [str(col).replace(' ', '_').lower() for col in df_i.columns]
-
-            list_of_dfs.append(df_i)
-
-        df_yahoo = reduce(lambda x, y: pd.merge(x, y, how=join_method, on=['date', 'yahoo_ticker']), list_of_dfs)
-        date_plus_ticker = df_yahoo['date'].astype(str) + df_yahoo['yahoo_ticker'].astype(str) # one last quality check to ensure date + ticker is unique
-    return df_yahoo
 
 def convert_df_dtypes(df,
                      exclude_cols=[],
@@ -224,7 +125,8 @@ def convert_df_dtypes(df,
                      new_obj_dtype='category',
                      float_qualifiers='auto',
                      int_qualifiers='auto',
-                     obj_qualifiers='auto'):
+                     obj_qualifiers='auto',
+                     make_copy=True):
 
     """
     Description
@@ -244,8 +146,9 @@ def convert_df_dtypes(df,
     obj_qualifiers: same as float_qualifiers but for objects
 
     """
+    if make_copy: df = df.copy()
+    dtype_df = pd.DataFrame(df.dtypes.reset_index()).rename(columns={'index': 'col', 0: 'dtype'})
 
-    dtype_df = pd.DataFrame(df.dtypes.reset_index()).rename(columns={'index':'col', 0:'dtype'})
     unique_dtypes = dtype_df['dtype'].unique()
 
     if float_qualifiers == 'auto':
@@ -591,7 +494,9 @@ def calc_coef(df, target_colname, pred_colname):
                               )[0,1]
     return correlation
 
-
+def split_list(lst, n):
+    assert isinstance(lst, list) | isinstance(lst, np.ndarray), 'lst is not a list'
+    yield [lst[i: i + n] for i in range(0, len(lst), n)]
 
 def plot_coef_scores(era_scores,
                      x='date',
@@ -677,7 +582,7 @@ def calculate_fnc(sub, targets, features):
 
     # Normalize submission
     sub = (sub.rank(method="first").values - 0.5) / len(sub)
-
+    convert_df_dtypes
     # Neutralize submission to features
     f = features.values
     sub -= f.dot(np.linalg.pinv(f).dot(sub))
@@ -693,9 +598,10 @@ def calculate_fnc(sub, targets, features):
 def download_ticker_map(napi,
                         numerai_ticker_link='https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv',
                         main_ticker_col='bloomberg_ticker',
+                        yahoo_ticker_colname='yahoo_ticker',
                         verbose=True):
 
-    eligible_tickers = pd.Series(napi.ticker_universe(), name='yahoo_ticker')
+    eligible_tickers = pd.Series(napi.ticker_universe(), name=yahoo_ticker_colname)
 
     ticker_map = pd.read_csv(numerai_ticker_link)
     ticker_map = ticker_map[ticker_map[main_ticker_col].isin(eligible_tickers)]
