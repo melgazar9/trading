@@ -71,30 +71,59 @@ else:
 if INIT_SAVE_FILEPATH is not None and (INIT_SAVE_FILEPATH.lower().endswith('pkl') or INIT_SAVE_FILEPATH.lower().endswith('pickle')):
     dill.dump(dfs, open(INIT_SAVE_FILEPATH, 'wb'))
 
+
+if ('dfs' in locals()):
+
+    ### join the dfs in the dfs dictionary ###
+
+    # if NUM_WORKERS == 1 or os.name == 'nt': # unsurprisingly, multiprocessing does not work on Windows
+    for i in dfs.keys():
+        dfs[i].sort_values(by=DATETIME_COL, inplace=True)
+
+    gc.collect()
+
+    index_flatten_col = DATETIME_COL + '_localized' if FLATTEN_GRANULAR_DATA_PARAMS['flatten_localized'] else DATETIME_COL
+    dfs['1d'][index_flatten_col] = pd.to_datetime(dfs['1d'][index_flatten_col], utc=True)\
+                                     .dt.tz_convert(inspect.signature(download_yfinance_data)\
+                                                           .parameters['tz_localize_location']\
+                                                           .default)
+
+    if FLATTEN_GRANULAR_DATA_PARAMS:
+        for i in FLATTEN_GRANULAR_DATA_PARAMS['timeseries_to_flatten']:
+            if 'index' in dfs[i].columns: dfs[i].drop('index', axis=1, inplace=True)
+
+            dfs[i] = dfs[i].pivot_table(index=[pd.to_datetime(dfs[i][index_flatten_col], utc=True)\
+                                                 .dt.tz_convert(inspect.signature(download_yfinance_data)\
+                                                    .parameters['tz_localize_location']\
+                                                    .default).dt.date, YAHOO_TICKER_COL],
+                                        columns=[pd.to_datetime(dfs[i][index_flatten_col], utc=True)\
+                                                   .dt.tz_convert(inspect.signature(download_yfinance_data)\
+                                                   .parameters['tz_localize_location']\
+                                                   .default).dt.hour],
+                                        aggfunc=FLATTEN_GRANULAR_DATA_PARAMS['aggfunc'],
+                                        values=[i for i in dfs[i].columns if not i in [index_flatten_col, YAHOO_TICKER_COL]])
+            dfs[i].columns = list(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in dfs[i].columns.tolist()]).str.replace(' ', '_'))
+            dfs[i].reset_index(inplace=True)
+
+            dfs[i][index_flatten_col] = pd.to_datetime(dfs[i][index_flatten_col], utc=True)\
+                                          .dt.tz_convert(inspect.signature(download_yfinance_data)\
+                                                                .parameters['tz_localize_location']\
+                                                                .default)
+    df_yahoo = reduce(lambda df1, df2: \
+                          JOIN_DFS_PARAMS['join_function'](df1, \
+                                                           df2, \
+                                                           **{k: JOIN_DFS_PARAMS[k] for k in \
+                                                              [i for i in JOIN_DFS_PARAMS.keys() if \
+                                                               not i == 'join_function']}), \
+                      list(dfs.values()))
+gc.collect()
+
 if VERBOSE: print(df_yahoo.info())
 
 gc.collect()
 
 
-### join the dfs in the dfs dictionary ###
 
-if NUM_WORKERS == 1:
-    for i in dfs.keys():
-        dfs[i]['DATE_COL'] = pd.to_datetime(dfs[i]['DATE_COL'], utc=True)
-        dfs[i].sort_values(by=DATETIME_COL, inplace=True)
-else:
-    pool = mp.Pool()
-    pool.map(f, range(10))
-
-gc.collect()
-
-df_yahoo = reduce(lambda df1, df2: \
-                      JOIN_DFS_PARAMS['join_function'](df1,\
-                                                       df2[[i for i in df2.columns if not i in [YAHOO_TICKER_COL, DATETIME_COL + '_localized']]],\
-                                                       **{k: JOIN_DFS_PARAMS[k] for k in [i for i in JOIN_DFS_PARAMS.keys() if not i == 'join_function']}),
-                  list(dfs.values()))
-
-# reduce(lambda x,y: pd.merge(x, y, **JOIN_DFS_PARAMS))
 
 
 

@@ -3,6 +3,7 @@
 Created on Sun Dec 13 12:26:20 2020
 
 @author: Matt
+
 """
 import pandas as pd
 import numpy as np
@@ -19,6 +20,7 @@ from twelvedata import TDClient
 import yfinance
 import simplejson
 import requests
+import pendulum
 
 ###### Use alpha_vantage to get technical indicators
 
@@ -521,3 +523,48 @@ class CreateTargets():
                                 s + target_suffix] = 1
 
         return self.df_symbols
+
+def tz_diff(home, away, on=None):
+    """
+    Return the difference in hours between the away time zone and home.
+
+    `home` and `away` may be any values which pendulum parses as timezones.
+    However, recommended use is to specify the full formal name.
+    See https://gist.github.com/pamelafox/986163
+
+    As not all time zones are separated by an integer number of hours, this
+    function returns a float.
+
+    As time zones are political entities, their definitions can change over time.
+    This is complicated by the fact that daylight savings time does not start
+    and end on the same days uniformly across the globe. This means that there are
+    certain days of the year when the returned value between `Europe/Berlin` and
+    `America/New_York` is _not_ `6.0`.
+
+    By default, this function always assumes that you want the current
+    definition. If you prefer to specify, set `on` to the date of your choice.
+    It should be a `Pendulum` object.
+
+    This function returns the number of hours which must be added to the home time
+    in order to get the away time. For example,
+    ```python
+    >>> tz_diff('Europe/Berlin', 'America/New_York')
+    -6.0
+    >>> tz_diff('Europe/Berlin', 'Asia/Kabul')
+    2.5
+    ```
+    """
+    if on is None:
+        on = pendulum.today()
+    diff = (on.timezone_(home) - on.timezone_(away)).total_hours()
+
+    # what about the diff from Tokyo to Honolulu? Right now the result is -19.0
+    # it should be 5.0; Honolulu is naturally east of Tokyo, just not so around
+    # the date line
+    if abs(diff) > 12.0:
+        if diff < 0.0:
+            diff += 24.0
+        else:
+            diff -= 24.0
+
+    return diff

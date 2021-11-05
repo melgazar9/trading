@@ -99,16 +99,13 @@ def download_yfinance_data(tickers,
 
             # set UTC to True because we're pulling data from all over the world, and pandas cannot convert Tz-aware datetimes unless UTC is true
             if i == '1d' and type(tz_localize_location) == str:
-                df_i['date_localized'] = pd.to_datetime(df_i['date']).dt.tz_localize(tz_localize_location)
+                df_i['date_localized'] = pd.to_datetime(df_i['date'], utc=True).dt.tz_convert(tz_localize_location)
             elif i == '1h':
 
                 # date will be dtype object after concat because when pulling hour data from yfinance the date
                 # is tz_localized to the location of that specific ticker
 
-                try:
-                    df_i['date_localized'] = pd.to_datetime(df_i['date']).dt.tz_convert(tz_localize_location) # convert the ticker timezone to local
-                except ValueError:
-                    df_i['date_localized'] = pd.to_datetime(df_i['date'], utc=True).dt.tz_convert(tz_localize_location) # if both don't work there is a problem
+                df_i['date_localized'] = pd.to_datetime(df_i['date'], utc=True).dt.tz_convert(tz_localize_location)
 
                 df_i.reset_index(inplace=True)
 

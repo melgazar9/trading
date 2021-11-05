@@ -28,7 +28,7 @@ DOWNLOAD_VALID_TICKERS_PARAMS = {'numerai_ticker_link': 'https://numerai-signals
                                  'main_ticker_col': TICKER_COL,
                                  'verbose': True}
 USE_VAEX = False
-DOWNLOAD_YAHOO_DATA = True
+DOWNLOAD_YAHOO_DATA = False
 # 'tickers': ['SPY', 'AAPL', 'AMZN', 'TSLA', 'FB', 'MSFT', 'IWM'],
 DOWNLOAD_YFINANCE_DATA_PARAMS = {
                                  'intervals_to_download': ['1d', '1h'],
@@ -37,28 +37,34 @@ DOWNLOAD_YFINANCE_DATA_PARAMS = {
                                  # set progress to False in yfinance_params or set verbose = False in the main params to turn off progress bar per download
                                  'yfinance_params': {'start': '1990-01-01', 'threads': False, 'progress': False}}
 
+
+""" path params """
+
+INIT_SAVE_FILEPATH = 'D:/trading/data/numerai/datasets/raw_data/df_numerai_init_' + str(datetime.datetime.today().date()) + '.pkl' # windows --- set to None to not save
+# INIT_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/raw_data/df_numerai_init_' + str(datetime.datetime.today().date()) + '.pq' # linux
+
 # the below filepath reads the df into memory if DOWNLOAD_YAHOO_DATA == False
 # YAHOO_READ_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_init_2021-.feather' # linux
-YAHOO_READ_FILEPATH = 'D:/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_init_2021-05-30.pq' # windows
+YAHOO_READ_FILEPATH = 'D:/trading/data/numerai/datasets/raw_data/df_numerai_init_2021-11-03.pkl' # windows
+
+# FINAL_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # linux
+FINAL_SAVE_FILEPATH = 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # windows
+
+""" flatten granular data params """
+
+FLATTEN_GRANULAR_DATA_PARAMS = {'timeseries_to_flatten': ['1h'], 'aggfunc': 'first', 'flatten_localized': True}
 
 """ join dfs params"""
 
-JOIN_DFS_PARAMS = {'join_function': pd.merge_asof,
-                   'on': DATETIME_COL,
-                   'tolerance': pd.to_timedelta('1d'),
-                   'direction': 'backward'}
+JOIN_DFS_PARAMS = {'join_function': pd.merge,
+                   'on': [DATETIME_COL + '_localized', YAHOO_TICKER_COL],
+                   'how': 'outer'}
 
 """ target params """
 
 TARGET_JOIN_METHOD = 'outer' # Do not set this to inner! An inner join will result in the rolling / lagging features not making any sense!
 TARGET_JOIN_COLS = [DATETIME_COL, TICKER_COL]
 
-""" path params """
-
-INIT_SAVE_FILEPATH = 'D:/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_init_' + str(datetime.datetime.today().date()) + '.pkl' # windows
-# INIT_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_init_' + str(datetime.datetime.today().date()) + '.pq' # set to None to not save
-# FINAL_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # linux
-FINAL_SAVE_FILEPATH = 'D:/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # windows
 
 """ numerai signals params """
 
