@@ -7,7 +7,6 @@ Created on Sun Dec 13 12:26:20 2020
 """
 import pandas as pd
 import numpy as np
-from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 import multiprocessing as mp
 import dask
 from dask import delayed
@@ -21,6 +20,8 @@ import yfinance
 import simplejson
 import requests
 import pendulum
+
+from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 
 ###### Use alpha_vantage to get technical indicators
 
@@ -276,7 +277,7 @@ class PullHistoricalData():
 
 class CreateFeatures():
 
-    def __init__(self, df_symbols, copy = True):
+    def __init__(self, df_symbols, copy=True):
 
         self.df_symbols = df_symbols
         self.copy = copy
@@ -319,7 +320,7 @@ class CreateFeatures():
         self.df_symbols[symbol + symbol_sep + 'low_minus_prev_close'] = self.df_symbols[symbol + symbol_sep + low_col] - self.df_symbols[symbol + symbol_sep + close_col].shift()
         self.df_symbols[symbol + symbol_sep + 'high_minus_prev_close'] = self.df_symbols[symbol + symbol_sep + high_col] - self.df_symbols[symbol + symbol_sep + close_col].shift()
 
-        return self.df_symbols[[i for i in self.df_symbols.columns if not i in orig_cols]] # don't return original columns since the dfs are merged later
+        return self.df_symbols[[i for i in self.df_symbols.columns if i not in orig_cols]] # don't return original columns since the dfs are merged later
 
 
     def compute_naive_features(self, symbols, join_method = 'inner', num_workers = mp.cpu_count()):
@@ -328,39 +329,28 @@ class CreateFeatures():
 
             df_init = self.df_symbols.copy() # create a copy to avoid duplicate columns
 
-            delayed_list = [delayed(self.create_naive_features_single_symbol(symbol = s)) for s in symbols] # parallelize by symbol
-            df_symbols_tuple = dask.compute(*delayed_list, num_workers = num_workers)
+            delayed_list = [delayed(self.create_naive_features_single_symbol(symbol=s)) for s in symbols] # parallelize by symbol
+            df_symbols_tuple = dask.compute(*delayed_list, num_workers=num_workers)
             output_list = [df_symbols_tuple[i] for i in range(len(df_symbols_tuple))]
-            # df_symbols_out = pd.concat(output_list, axis=1, sort=False)
 
-            df_features = reduce(lambda x, y: pd.merge(x, y, how = join_method, left_index = True, right_index = True), output_list)
-
-            df_symbols_out = pd.merge(df_init,
-                                      df_features,
-                                      how = join_method,
-                                      left_index = True,
-                                      right_index = True)
+            df_features = reduce(lambda x, y: pd.merge(x, y, how=join_method, left_index=True, right_index=True), output_list)
+            df_symbols_out = pd.merge(df_init, df_features, how=join_method, left_index=True, right_index=True)
 
         else:
 
             df_init = self.df_symbols.copy() # create a copy to avoid duplicate columns
-            df_symbols_out = self.create_naive_features_single_symbol(symbol = symbols[0])
-            df_symbols_out = pd.merge(df_init, df_symbols_out, how = join_method, left_index = True, right_index = True)
+            df_symbols_out = self.create_naive_features_single_symbol(symbol=symbols[0])
+            df_symbols_out = pd.merge(df_init, df_symbols_out, how=join_method, left_index=True, right_index=True)
 
             for symbol in symbols[1:]:
 
-                df_symbols_i = self.create_naive_features_single_symbol(symbol = symbol)
+                df_symbols_i = self.create_naive_features_single_symbol(symbol=symbol)
+                df_symbols_out = pd.merge(df_symbols_out, df_symbols_i, how=join_method, left_index=True, right_index=True)
 
-                # df_symbols_out = pd.concat([df_symbols_out, self.create_naive_features_single_symbol(symbol = symbol)], axis = 1)
-                df_symbols_out = pd.merge(df_symbols_out,
-                                          df_symbols_i,
-                                          how = join_method,
-                                          left_index = True,
-                                          right_index = True)
         return df_symbols_out
 
 
-    def move_iar(self, feature, copy = True):
+    def move_iar(self, feature, copy=True):
 
         """
         Calculate move in a row

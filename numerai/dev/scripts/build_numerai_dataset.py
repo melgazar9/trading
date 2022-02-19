@@ -129,15 +129,13 @@ gc.collect()
 
 ### test if [yahoo_ticker_col + datetime] makes a unique index ###
 
-if USE_VAEX: df_yahoo = vx.from_pandas(df_yahoo)
-
 datetime_ticker_cat_init = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[YAHOO_TICKER_COL].astype(str)).tolist()
 if VERBOSE: print('datetime_ticker_cat before: ' + str(len(datetime_ticker_cat_init)))
 
 if GROUPBY_TICKER_DATE_AFTER_DOWNLOAD and len(datetime_ticker_cat_init) != len(set(datetime_ticker_cat_init)):
 
     gc.collect()
-    groupby_params = {} if USE_VAEX else {'observed': True}
+    groupby_params = {'observed': True}
     if N_GROUPBY_CHUNKS > 1:
 
         # since the above two approaches kill the memory, I will chunk the groupby into yahoo_ticker groups
@@ -179,12 +177,16 @@ if DROP_NULL_TICKERS: df_yahoo.dropna(subset=[TICKER_COL], inplace=True)
 datetime_ticker_cat_after = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[TICKER_COL].astype(str)).tolist()
 assert len(datetime_ticker_cat_after) == len(set(datetime_ticker_cat_after)), 'TICKER_COL and DATETIME_COL do not make a unique index!'
 del datetime_ticker_cat_after
-
+gc.collect()
 print('\nreading targets...\n')
 
 targets = pd.read_csv(NUMERAI_TARGETS_URL).assign(date=lambda df: pd.to_datetime(df['friday_date'], format='%Y%m%d'))
 
-if VERBOSE: targets['target'].value_counts(), targets['target'].value_counts(normalize=True)
+if VERBOSE:
+    for t in NUMERAI_TARGET_NAMES:
+        print('\n', targets[t].value_counts(),'\n')
+        print('\n', targets[t].value_counts(normalize=True), '\n')
+
 
 ### Merge targets into df_yahoo ###
 
@@ -195,9 +197,12 @@ if VERBOSE: targets['target'].value_counts(), targets['target'].value_counts(nor
 print('\nmerging numerai target...\n')
 
 df_yahoo = pd.merge(df_yahoo, targets, on=TARGET_JOIN_COLS, how=TARGET_JOIN_METHOD)
-
 del targets # reduce memory
+df_yahoo.dropna(axis=0, how='all',
+                subset=[i for i in df_yahoo.columns if not i in [DATETIME_COL, TICKER_COL, YAHOO_TICKER_COL] + NUMERAI_TARGET_NAMES + ['friday_date', 'data_type']],
+                inplace=True)
 
+gc.collect()
 
 ### save memory ###
 

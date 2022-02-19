@@ -26,7 +26,6 @@ from collections import Counter
 import re
 from multiprocessing import Pool, Process
 import matplotlib.pyplot as plt
-from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 import configparser
 from sklearn.pipeline import Pipeline, make_pipeline
 from category_encoders import TargetEncoder
@@ -84,7 +83,6 @@ def parallize_pandas_func(df, df_attribute, parallelize_by_col = True, num_worke
 
         dask_tuple = dask.compute(*delayed_list)
         df_out = pd.concat([i for i in dask_tuple], axis = 1)
-
         return df_out
 
 class PreprocessFeatures(TransformerMixin):
@@ -113,7 +111,7 @@ class PreprocessFeatures(TransformerMixin):
 
         Attributes
 
-        detect_features attributes are dictionary attributes
+        detect_feature_types attributes are dictionary attributes
 
         fit attributes are sklearn ColumnTransformer attributes
 
@@ -148,33 +146,31 @@ class PreprocessFeatures(TransformerMixin):
         self.verbose = True
         self.copy = copy
 
-    def detect_features(self, X, y):
+    def detect_feature_types(self, X):
 
-        if self.copy: X, y = X.copy(), y.copy()
+        if self.copy: X = X.copy()
 
         if not self.detect_dtypes:
             ds_print('Not detecting dtypes.', verbose=self.verbose)
-            feature_dict = {'numeric_features' : self.numeric_features,
-                            'oh_features' : self.oh_features,
-                            'hc_features' : self.hc_features}
+            feature_dict = {'numeric_features': self.numeric_features,
+                            'oh_features': self.oh_features,
+                            'hc_features': self.hc_features}
             return feature_dict
 
+        detected_numeric_vars = make_column_selector(dtype_include=np.number)(X[[i for i in X.columns if i not in self.preserve_vars + [self.target]]])
 
-        detected_numeric_vars = make_column_selector(dtype_include=np.number)(X[[i for i in X.columns if not i in self.preserve_vars + [self.target]]])
+        detected_oh_vars = [i for i in X.loc[:, (X.nunique() < self.max_oh_cardinality) & (X.nunique() > 1)].columns if i not in self.preserve_vars + [self.target]]
 
-        detected_oh_vars = [i for i in X.loc[:, X.nunique() < self.max_oh_cardinality].columns if not i in self.preserve_vars + [self.target]]
-        # detected_oh_vars = [i for i in X.columns if X[i].unique().size < self.max_oh_cardinality if not i in self.preserve_vars + [self.target]]
-
-        detected_hc_vars = X[[i for i in X.columns if not i in self.preserve_vars]] \
-                            .select_dtypes(['object', 'category']) \
-                            .apply(lambda col: col.nunique()) \
-                            .loc[lambda x: x > self.max_oh_cardinality] \
+        detected_hc_vars = X[[i for i in X.columns if i not in self.preserve_vars]]\
+                            .select_dtypes(['object', 'category'])\
+                            .apply(lambda col: col.nunique())\
+                            .loc[lambda x: x > self.max_oh_cardinality]\
                             .index.tolist()
 
-        numeric_features = list(set([i for i in self.numeric_features + [i for i in detected_numeric_vars if not i in self.oh_features and not i in self.hc_features]]))
-        oh_features = list(set([i for i in self.oh_features  + [i for i in detected_oh_vars if not i in self.numeric_features and not i in self.hc_features]]))
-        hc_features = list(set([i for i in self.hc_features + [i for i in detected_hc_vars if not i in self.numeric_features and not i in self.oh_features]]))
-
+        discarded_features = X.isnull().sum()[X.isnull().sum() == X.shape[0]].index
+        numeric_features = list(set([i for i in self.numeric_features + [i for i in detected_numeric_vars if i not in self.oh_features and i not in self.hc_features and i not in discarded_features]]))
+        oh_features = list(set([i for i in self.oh_features  + [i for i in detected_oh_vars if i not in self.numeric_features and i not in self.hc_features and i not in discarded_features]]))
+        hc_features = list(set([i for i in self.hc_features + [i for i in detected_hc_vars if i not in self.numeric_features and i not in self.oh_features and i not in discarded_features]]))
 
         ds_print('Overlap between numeric and oh_features: ' + str(list(set(np.intersect1d(numeric_features, oh_features)))), verbose=self.verbose)
         ds_print('Overlap between numeric and hc_features: ' + str(list(set(np.intersect1d(numeric_features, hc_features)))), verbose=self.verbose)
@@ -182,38 +178,39 @@ class PreprocessFeatures(TransformerMixin):
         ds_print('Overlap between oh_features and hc_features will be moved to oh_features', verbose=self.verbose)
 
         if self.overwrite_detection:
-            numeric_features = [i for i in numeric_features if not i in oh_features and not i in hc_features]
-            oh_features = [i for i in oh_features if not i in hc_features and not i in numeric_features]
-            hc_features = [i for i in hc_features if not i in oh_features and not i in numeric_features]
+            numeric_features = [i for i in numeric_features if i not in oh_features and i not in hc_features and i not in discarded_features]
+            oh_features = [i for i in oh_features if i not in hc_features and i not in numeric_features and i not in discarded_features]
+            hc_features = [i for i in hc_features if i not in oh_features and i not in numeric_features and i not in discarded_features]
         else:
-            numeric_overlap = [i for i in numeric_features if i in oh_features or i in hc_features]
-            oh_overlap = [i for i in oh_features if i in hc_features or i in numeric_features]
-            hc_overlap = [i for i in hc_features if i in oh_features or i in numeric_features]
+            numeric_overlap = [i for i in numeric_features if i in oh_features or i in hc_features and i not in discarded_features]
+            oh_overlap = [i for i in oh_features if i in hc_features or i in numeric_features and i not in discarded_features]
+            hc_overlap = [i for i in hc_features if i in oh_features or i in numeric_features and i not in discarded_features]
 
             if numeric_overlap or oh_overlap or hc_overlap:
-                ds_print('Error - There is an overlap between numeric, oh, and hc features! To ignore this set overwrite_detection to True.', verbose=self.verbose)
-                sys.exit()
+                raise('Error - There is an overlap between numeric, oh, and hc features! To ignore this set overwrite_detection to True.')
 
-        total_features = list(set(numeric_features + oh_features + hc_features))
+        total_features = list(set(numeric_features + oh_features + hc_features + list(discarded_features)))
 
         if any([i not in total_features for i in [i for i in X.columns if not i in self.preserve_vars and not i in [self.target]]]):
-            ds_print('Not all features were detected!!', verbose=self.verbose)
-            sys.exit()
+            raise('Not all features were detected!!')
 
         ds_print('\nnumeric_features:' + str(numeric_features), verbose=self.verbose)
-        ds_print('\nhc_features:' + str(hc_features), verbose=self.verbose)
         ds_print('\noh_features:' + str(oh_features), verbose=self.verbose)
+        ds_print('\nhc_features:' + str(hc_features), verbose=self.verbose)
+        ds_print('\ndiscarded_features:' + str(discarded_features), verbose=self.verbose)
 
         feature_dict = {'numeric_features' : numeric_features,
                         'oh_features' : oh_features,
-                        'hc_features' : hc_features}
+                        'hc_features' : hc_features,
+                        'discarded_features': discarded_features
+                        }
         return feature_dict
 
     def fit(self, X, y, remainder = 'drop', sparse_threshold = 0):
 
         if self.copy: X, y = X.copy(), y.copy()
 
-        feature_types = self.detect_features(X, y)
+        feature_types = self.detect_feature_types(X)
 
         if self.FE_pipeline_dict is None:
 
@@ -253,7 +250,6 @@ class PreprocessFeatures(TransformerMixin):
             n_jobs=self.n_jobs).fit(X, y)
 
         setattr(feature_transformer, 'feature_types', feature_types) # set an attribute for feature types
-
         return feature_transformer
 
 
@@ -791,7 +787,7 @@ class RunModel():
             return self.df_full
 
 
-    def run_everything(self):
+    def train_and_predict(self):
 
         run_model_dict = dict()
         run_model_dict['model'] = self.train_model()
@@ -863,6 +859,9 @@ def timeseries_split(df,
     """
 
     if copy: df = df.copy()
+
+    if len(df.index) != df.index[-1] - df.index[0]:
+        df.reset_index(inplace=True)
 
     nrows = len(df)
 

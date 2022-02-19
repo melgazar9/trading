@@ -4,7 +4,7 @@ import numpy as np
 import simplejson
 import yfinance
 import datetime
-
+from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 
 
 def download_yfinance_data(tickers,
@@ -100,13 +100,13 @@ def download_yfinance_data(tickers,
             # set UTC to True because we're pulling data from all over the world, and pandas cannot convert Tz-aware datetimes unless UTC is true
             if i == '1d' and type(tz_localize_location) == str:
                 df_i['date_localized'] = pd.to_datetime(df_i['date'], utc=True).dt.tz_convert(tz_localize_location)
+                create_datetime_features(df_i, 'date', include_hour=False, make_copy=False)
             elif i == '1h':
 
                 # date will be dtype object after concat because when pulling hour data from yfinance the date
                 # is tz_localized to the location of that specific ticker
-
                 df_i['date_localized'] = pd.to_datetime(df_i['date'], utc=True).dt.tz_convert(tz_localize_location)
-
+                df_i.loc[:, 'hour'] = df_i['date'].dt.hour
                 df_i.reset_index(inplace=True)
 
             df_i.columns = [str(col).replace(' ', '_').lower() for col in df_i.columns]
@@ -160,7 +160,6 @@ def convert_df_dtypes(df,
 
     return df
 
-
 def create_naive_features_single_symbol(df,
                                         symbol='',
                                         symbol_sep='',
@@ -194,14 +193,12 @@ def create_naive_features_single_symbol(df,
     df['prev_close_pct_chg' + new_col_suffix] = df['move' + new_col_suffix] / df[close_col].shift()
     df['range' + new_col_suffix] = df[high_col] - df[low_col]
 
-
     ### high diffs ###
 
     df['high_move' + new_col_suffix] = df[high_col] - df[open_col]
     df['high_minus_prev_high' + new_col_suffix] = df[high_col] - df[high_col].shift()
     df['high_minus_prev_low' + new_col_suffix] = df[high_col] - df[low_col].shift()
     df['high_minus_close' + new_col_suffix] = df[high_col] - df[close_col]
-
 
     ### low diffs ###
 
@@ -210,14 +207,12 @@ def create_naive_features_single_symbol(df,
     df['low_minus_prev_high' + new_col_suffix] = df[low_col] - df[high_col].shift()
     df['low_minus_close' + new_col_suffix] = df[low_col] - df[close_col]
 
-
     ### high diff pcts ###
 
     df['high_move_pct' + new_col_suffix] = df['high_move' + new_col_suffix] / df[open_col]
     df['high_minus_close_pct' + new_col_suffix] = df['high_minus_close' + new_col_suffix] / df[close_col]
     df['low_move_pct' + new_col_suffix] = df['low_move' + new_col_suffix] / df[open_col]
     df['low_minus_close_pct' + new_col_suffix] = df['low_minus_close' + new_col_suffix] / df[close_col]
-
 
     ### prev diffs ###
 
@@ -228,17 +223,21 @@ def create_naive_features_single_symbol(df,
 
 
 def calc_diffs(df, diff_cols, diff_suffix='_diff', copy=True):
-
     if copy: df = df.copy()
-
     df[[i + diff_suffix for i in diff_cols]] = df[diff_cols].diff()
     return df
+
 
 def calc_pct_changes(df, pct_change_cols, pct_change_suffix='_pct_change', copy=True):
 
     if copy: df = df.copy()
 
-    df[[i + pct_change_suffix for i in pct_change_cols]] = df[pct_change_cols].pct_change()
+    try:
+        df[[i + pct_change_suffix for i in pct_change_cols]] = df[pct_change_cols].pct_change()
+    except ZeroDivisionError:
+        df[pct_change_cols] = df[pct_change_cols] + 0.00000000001
+        df[[i + pct_change_suffix for i in pct_change_cols]] = df[pct_change_cols].pct_change()
+
     return df
 
 class CreateTargets():
@@ -622,3 +621,25 @@ def download_ticker_map(napi,
     if verbose: print('tickers after cleaning:', ticker_map.shape)
 
     return ticker_map
+
+
+def create_datetime_features(df, datetime_col, include_hour=True, make_copy=False):
+
+    if make_copy: df = df.copy()
+
+    if include_hour: df.loc[:, 'hour'] = df[datetime_col].dt.hour
+
+    df.loc[:, 'day'] = df[datetime_col].dt.isocalendar().day
+    df.loc[:, 'week'] = df[datetime_col].dt.isocalendar().week
+    df.loc[:, 'month'] = df[datetime_col].dt.month
+    df.loc[:, 'dayofweek'] = df[datetime_col].dt.dayofweek
+    df.loc[:, 'dayofyear'] = df[datetime_col].dt.dayofyear
+    df.loc[:, 'quarter'] = df[datetime_col].dt.quarter
+    df.loc[:, 'is_month_start'] = df[datetime_col].dt.is_month_start
+    df.loc[:, 'is_month_end'] = df[datetime_col].dt.is_month_end
+    df.loc[:, 'is_quarter_start'] = df[datetime_col].dt.is_quarter_start
+    df.loc[:, 'is_quarter_end'] = df[datetime_col].dt.is_quarter_end
+    holidays = calendar().holidays(start=df[datetime_col].min(), end=df[datetime_col].max())
+    df.loc[:, 'is_holiday'] = df[datetime_col].isin(holidays)
+
+    return df

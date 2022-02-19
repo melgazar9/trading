@@ -10,7 +10,7 @@ if not os.getcwd().endswith('trading'): os.chdir('../../..') # local machine
 assert os.getcwd().endswith('trading'), 'Wrong path!'
 import numerapi
 import plotly.express as px
-
+from skimpy import clean_columns
 
 os.environ['NUMEXPR_MAX_THREADS'] = '32'
 os.environ['NUMEXPR_NUM_THREADS'] = '16'
@@ -52,113 +52,73 @@ if START_DATE:
 # 2. feature creation
 # 3. feature transformation
 
-column_transformer = ColumnTransformer(transformers=\
-                                       [\
-                                           ('data_cleaner', DATA_CLEANER_PIPE, lambda df: df.columns)#,\
+if CALC_DIFF_PIPE:
+    diff_cols_to_select = eval(DIFF_COLS_TO_SELECT_STRING)
+    diff_step = ('calc_diffs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(lambda df: calc_diffs(df, diff_cols=np.intersect1d(df.columns, diff_cols_to_select)))))
+    DATA_MANIPULATION_PIPE.steps.append(diff_step)
 
-                                            # ('create_naive_features',
-                                            #  make_pipeline(
-                                            #      FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                            #                   .apply(lambda df: create_naive_features_single_symbol(df, **NAIVE_FEATURES_PARAMS)))\
-                                            #  ), lambda df: df.columns),\
-                                            #
-                                            # ('calc_diffs',\
-                                            #  make_pipeline(
-                                            #      FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                            #                   .apply(lambda df: calc_diffs(df))))
-                                            #  , lambda df: eval(DIFF_COLS_STRING))\
-                                        ],\
+if CALC_PCT_CHG_PIPE:
+    pct_chg_cols_to_select = eval(PCT_CHG_COLS_TO_SELECT_STRING)
+    pct_chg_step = ('calc_pct_chgs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(lambda df: calc_pct_changes(df, pct_change_cols=np.intersect1d(df.columns, pct_chg_cols_to_select)))))
+    DATA_MANIPULATION_PIPE.steps.append(pct_chg_step)
 
-                                       n_jobs=1,
-                                       remainder='passthrough').fit(df_numerai)
+DATA_MANIPULATION_PIPE.steps = list(dict(DATA_MANIPULATION_PIPE.steps).items())
+data_manipulator = DATA_MANIPULATION_PIPE.fit(df_numerai)
 
-# df_tmp = column_transformer.transform(df_numerai.tail(1000000))
+df_numerai = data_manipulator.transform(df_numerai)
 
-
-### data cleaning ###
-
-# One step in here is data creation because we need naive features to create the diffs under feature_creation
-
-data_cleaner = Pipeline(**DATA_CLEANER_PARAMS).fit(df_numerai.tail(100000))
-df_numerai = data_cleaner.transform(df_numerai)
-
-### feature creation ###
-
-diff_params = eval(DIFF_PARAMS_STRING)
-pct_change_params = eval(PCT_CHG_PARAMS_STRING)
-
-diff_pipe = Pipeline(steps=[\
-    ('calc_diffs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                .apply(lambda df: calc_diffs(df, **diff_params))))
-    ])
-
-pct_pipe = Pipeline(steps = [\
-    ('calc_pct_chgs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                   .apply(lambda df: calc_pct_changes(df, **pct_change_params))))
-    ])
-
-diff_creator = Pipeline()
-
-feature_creator = Pipeline(**FEATURE_CREATION_PARAMS).fit(df_numerai.tail(100000))
-df_numerai = feature_creator.transform(df_numerai)
 
 ### Timeseries Split ###
 
 df_numerai = timeseries_split(df_numerai, **TIMESERIES_SPLIT_PARAMS)
 
-
-### train test split ###
-
 input_features = eval(INPUT_FEATURES_STRING)
-preserve_vars = eval(PRESERVE_VARS_STRING)
+preserve_vars = list(set(PRESERVE_VARS + eval(PRESERVE_VARS_STRING)))
+drop_vars = eval(DROP_VARS_STRING)
 
-X_train, y_train = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][TARGET]
-X_val, y_val = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][TARGET]
-X_test, y_test = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][TARGET]
+X_train, y_train = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][TARGET_COL]
+X_val, y_val = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][TARGET_COL]
+X_test, y_test = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][TARGET_COL]
+
 
 
 ### Preprocessing ###
 
-# df_train = df_numerai[list(set(input_features + preserve_vars + [TARGET]))]
-
 PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
 feature_transformer = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
+final_features = FeatureImportance(feature_transformer, verbose=VERBOSE).get_feature_names() # [i.replace('.', '__').replace(' ', '_').lower().replace('-', '_') for i in FeatureImportance(feature_transformer, verbose=VERBOSE).get_feature_names()]
+assert len([item for item, count in collections.Counter(final_features).items() if count > 1]) == 0
 
-final_features = FeatureImportance(feature_transformer, verbose=VERBOSE).get_feature_names()
-X_train_transformed = pd.DataFrame(feature_transformer.transform(X_train), columns=final_features)
-X_val_transformed = pd.DataFrame(feature_transformer.transform(X_val), columns=final_features)
-X_test_transformed = pd.DataFrame(feature_transformer.transform(X_test), columns=final_features)
-X_transformed = pd.concat([X_train_transformed, X_val_transformed, X_test_transformed])
-
-
+X_train_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_train), columns=final_features))
+X_val_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_val), columns=final_features))
+X_test_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_test), columns=final_features))
+X_transformed = clean_columns(pd.concat([X_train_transformed, X_val_transformed, X_test_transformed]))
+final_features = X_train_transformed.columns
 
 ### Train model ###
 
-output_dict = RunModel(X_test=X_transformed,
+model_obj = RunModel(X_test=X_transformed,
                       features=final_features,
                       X_train=X_train_transformed.tail(10000),
                       y_train=y_train.tail(10000),
                       algorithm=ALGORITHM,
                       eval_set=[(X_val_transformed, y_val)],
                       df_full=df_numerai,
-                      **RUN_MODEL_PARAMS).run_everything()
+                      **RUN_MODEL_PARAMS).train_and_predict()
 
-output_dict['data_cleaner'] = data_cleaner
-del data_cleaner
+model_obj['data_manipulator'] = data_manipulator
+del data_manipulator
 
-output_dict['feature_creator'] = feature_creator
-del feature_creator
-
-output_dict['feature_transformer'] = feature_transformer
+model_obj['feature_transformer'] = feature_transformer
 del feature_transformer
 
-output_dict['input_features'] = input_features
-output_dict['final_features'] = final_features
-output_dict['data_type_mapping'] = output_dict['df_pred'].dtypes.to_dict()
+model_obj['input_features'] = input_features
+model_obj['final_features'] = final_features
+model_obj['final_dtype_mapping'] = model_obj['df_pred'].dtypes.to_dict()
 
 if SAVE_OBJECT:
     dill.dump(output_dict, open(OBJECT_OUTPATH + \
-                               type(output_dict['model']).__name__ + '_' + \
+                               type(model_obj['model']).__name__ + '_' + \
                                str(datetime.datetime.today()\
                                    .replace(second=0, microsecond=0))\
                                    .replace(' ', '_')\
@@ -171,6 +131,8 @@ if SAVE_OBJECT:
 ########################
 
 ### run numerai analytics ###
+
+# place holder - this will be part of another script
 
 # try:
 #     pred_colname = RUN_MODEL_PARAMS['prediction_colname']
