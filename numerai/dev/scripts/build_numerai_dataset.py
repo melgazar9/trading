@@ -66,9 +66,9 @@ else:
     elif YAHOO_READ_FILEPATH.lower().lower().endswith('pkl'):
         dfs = dill.load(open(YAHOO_READ_FILEPATH, 'rb'))
 
-### save dfs after initial download ###
+### save dfs after initial download for backup ###
 
-if INIT_SAVE_FILEPATH is not None and (INIT_SAVE_FILEPATH.lower().endswith('pkl') or INIT_SAVE_FILEPATH.lower().endswith('pickle')):
+if DOWNLOAD_YAHOO_DATA and INIT_SAVE_FILEPATH is not None and (INIT_SAVE_FILEPATH.lower().endswith('pkl') or INIT_SAVE_FILEPATH.lower().endswith('pickle')):
     dill.dump(dfs, open(INIT_SAVE_FILEPATH, 'wb'))
 
 
@@ -122,9 +122,21 @@ if VERBOSE: print(df_yahoo.info())
 
 gc.collect()
 
+if APPEND_OLD_DATA:
+    # load in data
+    if OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('pq') or OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('parquet'):
+        df_numerai_old = dd.read_parquet(OLD_FULL_NUMERAI_BUILD_FILEPATH, DASK_NPARTITIONS=DASK_NPARTITIONS).compute()
+    elif OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('feather'):
+        df_numerai_old = pd.read_feather(OLD_FULL_NUMERAI_BUILD_FILEPATH)
 
+    df_numerai_old.set_index([TICKER_COL, DATETIME_COL], inplace=True)
+    df_yahoo.set_index([TICKER_COL, DATETIME_COL], inplace=True)
 
-
+    cols_to_backfill = np.intersect1d(df_yahoo.columns, [i for i in df_numerai_old.columns if '1h' in i]) # backfill the new yahoo download with the old 1hr granular data
+    df_yahoo[cols_to_backfill] = df_yahoo[cols_to_backfill].fillna(df_numerai_old[cols_to_backfill])
+    df_yahoo.reset_index(drop=True, inplace=True)
+    del df_numerai_old
+    gc.collect()
 
 
 ### test if [yahoo_ticker_col + datetime] makes a unique index ###
@@ -135,6 +147,7 @@ if VERBOSE: print('datetime_ticker_cat before: ' + str(len(datetime_ticker_cat_i
 if GROUPBY_TICKER_DATE_AFTER_DOWNLOAD and len(datetime_ticker_cat_init) != len(set(datetime_ticker_cat_init)):
 
     gc.collect()
+
     groupby_params = {'observed': True}
     if N_GROUPBY_CHUNKS > 1:
 
@@ -152,12 +165,10 @@ if GROUPBY_TICKER_DATE_AFTER_DOWNLOAD and len(datetime_ticker_cat_init) != len(s
         df_yahoo = pd.concat(list_of_dfs, axis=0)
         del list_of_dfs
     else:
-        # the below syntax does not work with vaex, and pandas groupby runs out of memory
+
         df_yahoo = df_yahoo.groupby(by=[DATETIME_COL, YAHOO_TICKER_COL], **groupby_params).first().reset_index()
 
-        # the below syntax works with vaex, but vaex also runs out of memory
-        # df_yahoo = df_yahoo.groupby(by=[DATETIME_COL, YAHOO_TICKER_COL]).agg({i: 'min' for i in df_yahoo.columns if i not in [DATETIME_COL, YAHOO_TICKER_COL, TICKER_COL]})
-del datetime_ticker_cat_init
+datetime_ticker_cat_init
 
 ### create bloomberg ticker ###
 
@@ -168,17 +179,18 @@ if CREATE_BLOOMBERG_TICKER_FROM_YAHOO or DOWNLOAD_YAHOO_DATA:
 
 
 ### ensure no [DATETIME_COL, TICKER_COL] are duplicated ###
-# If there are any duplicates in datetime_ticker_cat_after at this point, and when GROUPBY_TICKER_DATE_AFTER_DOWNLOAD is set to True),
-# then there is a bug in at least one of the above functions
 
-print('\nvalidating unique date + ticker index...\n')
+# If there are any duplicates in datetime_ticker_cat_after at this point, and when GROUPBY_TICKER_DATE_AFTER_DOWNLOAD is set to True),then there is a bug in at least one of the above functions
+
+if VERBOSE: print('\nvalidating unique date + ticker index...\n')
+
 if DROP_NULL_TICKERS: df_yahoo.dropna(subset=[TICKER_COL], inplace=True)
 
 datetime_ticker_cat_after = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[TICKER_COL].astype(str)).tolist()
 assert len(datetime_ticker_cat_after) == len(set(datetime_ticker_cat_after)), 'TICKER_COL and DATETIME_COL do not make a unique index!'
 del datetime_ticker_cat_after
 gc.collect()
-print('\nreading targets...\n')
+if VERBOSE: print('\nreading targets...\n')
 
 targets = pd.read_csv(NUMERAI_TARGETS_URL).assign(date=lambda df: pd.to_datetime(df['friday_date'], format='%Y%m%d'))
 
@@ -194,7 +206,7 @@ if VERBOSE:
 # - If we drop rows with NAs we have 0 rows left
 # - The best bet seems to be an outer join without dropping NA rows.
 
-print('\nmerging numerai target...\n')
+if VERBOSE: print('\nmerging numerai target...\n')
 
 df_yahoo = pd.merge(df_yahoo, targets, on=TARGET_JOIN_COLS, how=TARGET_JOIN_METHOD)
 del targets # reduce memory
@@ -207,13 +219,13 @@ gc.collect()
 ### save memory ###
 
 if CONVERT_DF_DTYPES:
-    print('\nconverting dtypes...\n')
+    if VERBOSE: print('\nconverting dtypes...\n')
     df_yahoo = convert_df_dtypes(df_yahoo, **CONVERT_DTYPE_PARAMS)
-
 
 ### Save df ###
 
-print('\nsaving df build...\n')
+if VERBOSE: print('\nsaving df build...\n')
+
 if FINAL_SAVE_FILEPATH.endswith('feather'):
     if 'date' in df_yahoo.index.names or YAHOO_TICKER_COL in df_yahoo.index.names:
         df_yahoo.reset_index().to_feather(FINAL_SAVE_FILEPATH)
@@ -221,7 +233,6 @@ if FINAL_SAVE_FILEPATH.endswith('feather'):
         df_yahoo.reset_index(drop=True).to_feather(FINAL_SAVE_FILEPATH)
 elif FINAL_SAVE_FILEPATH.endswith('pq') or FINAL_SAVE_FILEPATH.endswith('parquet'):
     df_yahoo.to_parquet(FINAL_SAVE_FILEPATH)
-
 
 end_time = time.time()
 

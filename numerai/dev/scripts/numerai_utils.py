@@ -101,17 +101,22 @@ def download_yfinance_data(tickers,
             if i == '1d' and type(tz_localize_location) == str:
                 df_i['date_localized'] = pd.to_datetime(df_i['date'], utc=True).dt.tz_convert(tz_localize_location)
                 create_datetime_features(df_i, 'date', include_hour=False, make_copy=False)
-            elif i == '1h':
 
+            elif i == '1h':
                 # date will be dtype object after concat because when pulling hour data from yfinance the date
                 # is tz_localized to the location of that specific ticker
                 df_i['date_localized'] = pd.to_datetime(df_i['date'], utc=True).dt.tz_convert(tz_localize_location)
-                df_i.loc[:, 'hour'] = df_i['date'].dt.hour
+                try:
+                    df_i.loc[:, 'hour'] = df_i['date'].dt.hour
+                except:
+                    try:
+                        df_i.loc[:, 'hour'] = pd.to_datetime(df_i['date'].dt.hour)
+                    except:
+                        df_i.loc[:, 'hour'] = np.nan
                 df_i.reset_index(inplace=True)
 
             df_i.columns = [str(col).replace(' ', '_').lower() for col in df_i.columns]
             dict_of_dfs[i] = df_i
-
     return dict_of_dfs
 
 
