@@ -526,7 +526,7 @@ def drop_nas(df, col_contains, exception_cols=[], how=None, copy=True, **dropna_
     return df.dropna(how=how, subset=selected_cols, **dropna_params)
 
 
-def create_move_iar(df, iar_cols, iar_suffix='_iar', copy=True):
+def calc_move_iar(df, iar_cols, iar_suffix='_iar', copy=True):
 
     if copy: df = df.copy()
 
