@@ -35,7 +35,6 @@ from category_encoders import TargetEncoder
 from sklearn.impute import MissingIndicator
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.base import TransformerMixin
-from sklearn.experimental import enable_hist_gradient_boosting
 from feature_engine.outliers import Winsorizer, ArbitraryOutlierCapper#, OutlierTrimmer
 from imblearn.over_sampling import SMOTE, ADASYN, RandomOverSampler, KMeansSMOTE, SMOTENC, SVMSMOTE, BorderlineSMOTE
 from imblearn.under_sampling import RandomUnderSampler, EditedNearestNeighbours, TomekLinks, AllKNN, \
@@ -84,6 +83,7 @@ def parallize_pandas_func(df, df_attribute, parallelize_by_col = True, num_worke
         dask_tuple = dask.compute(*delayed_list)
         df_out = pd.concat([i for i in dask_tuple], axis = 1)
         return df_out
+
 
 class PreprocessFeatures(TransformerMixin):
 
@@ -157,6 +157,7 @@ class PreprocessFeatures(TransformerMixin):
                             'hc_features': self.hc_features}
             return feature_dict
 
+
         detected_numeric_vars = make_column_selector(dtype_include=np.number)(X[[i for i in X.columns if i not in self.preserve_vars + [self.target]]])
 
         detected_oh_vars = [i for i in X.loc[:, (X.nunique() < self.max_oh_cardinality) & (X.nunique() > 1)].columns if i not in self.preserve_vars + [self.target]]
@@ -219,20 +220,19 @@ class PreprocessFeatures(TransformerMixin):
                 # Winsorizer(distribution='gaussian', tail='both', fold=3, missing_values = 'ignore'),
                 MinMaxScaler(feature_range = (0,1)),
                 SimpleImputer(strategy='median', add_indicator=True)
-
             )
 
             hc_pipe = make_pipeline(
                                 FunctionTransformer(lambda x: x.astype(str)),
-                                TargetEncoder(return_df = True,
-                                              handle_missing = 'value',
-                                              handle_unknown = 'value',
-                                              min_samples_leaf = 10)
+                                TargetEncoder(return_df=True,
+                                              handle_missing='value',
+                                              handle_unknown='value',
+                                              min_samples_leaf=10)
                                )
 
             oh_pipe = make_pipeline(
                 FunctionTransformer(lambda x: x.astype(str)),
-                OneHotEncoder(handle_unknown = 'ignore', sparse = False)
+                OneHotEncoder(handle_unknown='ignore', sparse=False)
             )
 
         else:
@@ -251,6 +251,43 @@ class PreprocessFeatures(TransformerMixin):
 
         setattr(feature_transformer, 'feature_types', feature_types) # set an attribute for feature types
         return feature_transformer
+
+
+def get_column_names_from_ColumnTransformer(column_transformer):
+    col_name = []
+
+    for transformer_in_columns in column_transformer.transformers_[
+                                  :-1]:  # the last transformer is ColumnTransformer's 'remainder'
+        print('\n\ntransformer: ', transformer_in_columns[0])
+
+        raw_col_name = list(transformer_in_columns[2])
+
+        if isinstance(transformer_in_columns[1], Pipeline):
+            # if pipeline, get the last transformer
+            transformer = transformer_in_columns[1].steps[-1][1]
+        else:
+            transformer = transformer_in_columns[1]
+
+        try:
+            if isinstance(transformer, OneHotEncoder):
+                names = list(transformer.get_feature_names(raw_col_name))
+
+            elif isinstance(transformer, SimpleImputer) and transformer.add_indicator:
+                missing_indicator_indices = transformer.indicator_.features_
+                missing_indicators = [raw_col_name[idx] + '_missing_flag' for idx in missing_indicator_indices]
+
+                names = raw_col_name + missing_indicators
+
+            else:
+                names = list(transformer.get_feature_names())
+
+        except AttributeError as error:
+            names = raw_col_name
+
+        print(names)
+
+        col_name.extend(names)
+    return col_name
 
 
 class FeatureImportance:
@@ -890,3 +927,14 @@ def timeseries_split(df,
         y_test = df.iloc[int(np.floor(nrows*(1 - val_prop))):][target_name]
 
         return X_train, y_train, X_val, y_val, X_test, y_test
+
+
+def merge_dicts(*dict_args):
+    """
+    Given any number of dictionaries, shallow copy and merge into a new dict,
+    precedence goes to key-value pairs in latter dictionaries.
+    """
+    result = {}
+    for dictionary in dict_args:
+        result.update(dictionary)
+    return result

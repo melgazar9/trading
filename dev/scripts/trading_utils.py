@@ -275,6 +275,7 @@ class PullHistoricalData():
         df_indicators = reduce(lambda x, y: pd.merge(x, y, how = join_method, left_index = True, right_index = True), list(df_indicator_dict.values()))
         return df_indicators
 
+
 class CreateFeatures():
 
     def __init__(self, df_symbols, copy=True):
@@ -348,41 +349,6 @@ class CreateFeatures():
                 df_symbols_out = pd.merge(df_symbols_out, df_symbols_i, how=join_method, left_index=True, right_index=True)
 
         return df_symbols_out
-
-
-    def move_iar(self, feature, copy=True):
-
-        """
-        Calculate move in a row
-        This function is slow for a single feature since it using a for loop, but the function can be parallelized across different features
-        """
-
-        lst=[]
-        prev_move_iar = 0
-
-        for move in self.df_symbols[feature]:
-            if np.isnan(move):
-                move_iar = 0
-                lst.append(move_iar)
-                prev_move_iar = move_iar
-            else:
-                if move == 0:
-                    move_iar = prev_move_iar
-                    lst.append(move_iar)
-                    prev_move_iar = move_iar
-                elif (move >= 0 and prev_move_iar >= 0) or (move <= 0 and prev_move_iar <= 0):
-                    move_iar = move + prev_move_iar
-                    lst.append(move_iar)
-                    prev_move_iar = move_iar
-                elif (move < 0 and prev_move_iar >= 0) or (move > 0 and prev_move_iar <= 0):
-                    move_iar = move
-                    lst.append(move_iar)
-                    prev_move_iar = move_iar
-        return pd.DataFrame(lst, index=self.df_symbols.index, columns=[feature]).rename(columns={feature: feature + '_iar'})
-
-    def pos_neg_move(self, feature, min_move_up, copy = True):
-        if self.copy: self.df_symbols = self.df_symbols.copy()
-        return self.df_symbols[feature] > min_move_up
 
 
 def RSI(prices, interval=14):

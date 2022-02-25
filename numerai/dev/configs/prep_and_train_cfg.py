@@ -16,11 +16,9 @@ START_DATE = '2015-01-01'
 
 ### path params ###
 
-SAVE_FEATURE_TRANSFORMER = False
-SAVE_OBJECT = False
-
-LOAD_DATA_FILEPATH = 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_2022-02-18.feather'
+SAVE_OBJECT = True
 OBJECT_OUTPATH = 'D:/trading/objects/'
+LOAD_DATA_FILEPATH = 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_2022-02-19.feather'
 
 ### feature params ###
 
@@ -30,6 +28,7 @@ INPUT_FEATURES_STRING = """list(set([col for col in df_numerai.columns
                                     if name in col]))"""
 
 PRESERVE_VARS_STRING = "list(set([col for col in df_numerai.columns if col not in input_features and ('target' in col or 'open' in col or 'close' in col or 'high' in col or 'low' in col)]))"
+
 DROP_VARS_STRING = "list(set([col for col in df_numerai.columns if col not in input_features and col not in preserve_vars]))"
 
 
@@ -48,13 +47,10 @@ TIMESERIES_SPLIT_PARAMS = {'train_prop': .7,
 
 DROPNA_PARAMS = {'col_contains': ['1d'], 'exception_cols': [TARGET_COL]}
 
-NAIVE_FEATURES_PARAMS = {'open_col': 'open_1d',
-                         'high_col': 'high_1d',
-                         'low_col': 'low_1d',
-                         'close_col': 'adj_close_1d',
-                         'volume_col': 'volume_1d',
-                         'new_col_suffix': '_1d',
-                         'copy': False}
+NAIVE_FEATURES_PARAMS = {'symbol_sep': '',
+                         'loop1': {'open_col': 'open_1d', 'high_col': 'high_1d', 'low_col': 'low_1d', 'close_col': 'adj_close_1d', 'volume_col': 'volume_1d'},
+                         'loop2': {'open_col': 'open_1h_0', 'high_col': 'high_1h_0', 'low_col': 'low_1h_0', 'close_col': 'adj_close_1h_0', 'volume_col': 'volume_1h_0'}
+                         }
 
 
 
@@ -64,9 +60,7 @@ DROP_DUPLICATE_ROWS = False
 
 TARGETS_HL3_PARAMS = {'buy': 0.025,
                       'sell': 0.025,
-                      'threshold': 0.25,
                       'stop': .01,
-                      'move_col': 'move_pct_1d',
                       'lm_col': 'low_move_pct_1d',
                       'hm_col': 'high_move_pct_1d',
                       'target_suffix': 'target_HL3'
@@ -76,9 +70,7 @@ TARGETS_HL5_PARAMS = {'strong_buy': 0.035,
                       'med_buy': 0.015,
                       'med_sell': 0.015,
                       'strong_sell': 0.035,
-                      'threshold': 0.25,
                       'stop': .025,
-                      'move_col': 'move_pct_1d',
                       'lm_col': 'low_move_pct_1d',
                       'hm_col': 'high_move_pct_1d',
                       'target_suffix': 'target_HL5'
@@ -102,44 +94,30 @@ LAGGING_FEATURES_PARAMS = {
 
 """ rolling_features params """
 
-ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},
-                           'rolling_fn': 'mean',
-                           'ewm_fn': 'mean',
-                           'ewm_params': {'com':.5},
-                           'rolling_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target', 'prev1_target_HL5'],
-                           'ewm_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target', 'prev1_target_HL5'],
-                           'join_method': 'outer',
-                           # 'groupby_cols': TICKER_COL,
-                           'copy': False
-                           }
+# ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},
+#                            'rolling_fn': 'mean',
+#                            'ewm_fn': 'mean',
+#                            'ewm_params': {'com':.5},
+#                            'rolling_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target_20d', 'prev1_target_HL5', 'prev2_target_20d'],
+#                            'ewm_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target_20d', 'prev1_target_HL5'],
+#                            'join_method': 'outer',
+#                            # 'groupby_cols': TICKER_COL,
+#                            'copy': False
+#                            }
 
-
-CALC_DIFF_PIPE = True
-CALC_PCT_CHG_PIPE = True
 DIFF_COLS_TO_SELECT_STRING = "[i for i in df_numerai.columns if i not in [DATE_COL, TICKER_COL, TARGET_COL] and not ('dat' in i.lower() or 'target' in i.lower() or 'ticker' in i.lower())]"
 PCT_CHG_COLS_TO_SELECT_STRING = "[i for i in df_numerai.columns if i not in [DATE_COL, TICKER_COL, TARGET_COL] and not ('dat' in i.lower() or 'target' in i.lower() or 'ticker' in i.lower())]"
 
+
 """ feature creation pipeline """
 
-DATA_MANIPULATION_PIPE = Pipeline(\
-    steps=[\
-            # ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),\
+# this will be done in the code for now
 
-            ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET_COL, 'yahoo_ticker'], how='any'))),\
-
-            ('dropna_cols', FunctionTransformer(lambda df: df.dropna(axis=1, how='all'))),\
-
-            # ('conditional_feature_dropna', FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS))),\
-
-            ('sort_df', FunctionTransformer(lambda df: df.sort_values(by=[DATE_COL, TICKER_COL])))
-
-            # ('create_naive_features', Functiontransformer(lambda df: create_naive_features(NAIVE_FEATURES_PARAMS)))
-        ]\
-    )
 
 FEATURE_CREATION_PARAMS = Pipeline(\
-
     steps=[\
+
+        # ('create_naive_features', FunctionTransformer(lambda df: CreateFeatures(**NAIVE_FEATURES_PARAMS).compute_naive_features(use_symbol_prefix=False))),
 
         ('create_targets_HL3', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
                                             .apply(lambda df: CreateTargets(df, copy=False)\
@@ -160,8 +138,8 @@ FEATURE_CREATION_PARAMS = Pipeline(\
 
         ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
                                         .apply(lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))\
-    ]
-)
+        ]
+    )
 
 ### Main machine-learning feature engineering pipeline ###
 

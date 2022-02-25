@@ -165,66 +165,144 @@ def convert_df_dtypes(df,
 
     return df
 
-def create_naive_features_single_symbol(df,
-                                        symbol='',
-                                        symbol_sep='',
-                                        open_col='open_1d',
-                                        high_col='high_1d',
-                                        low_col='low_1d',
-                                        close_col='adj_close_1d',
-                                        volume_col='volume_1d',
-                                        new_col_suffix='_1d',
-                                        copy=True):
-    """
+# def create_naive_features_single_symbol(df,
+#                                         symbol='',
+#                                         symbol_sep='',
+#                                         open_col='open_1d',
+#                                         high_col='high_1d',
+#                                         low_col='low_1d',
+#                                         close_col='adj_close_1d',
+#                                         volume_col='volume_1d',
+#                                         new_col_suffix='_1d',
+#                                         copy=True):
+#     """
+#
+#     Description
+#     ___________
+#     The output of this function creates additional features that are NOT ready for machine-learning
+#         An additional diff and/or pct_change step needs to be calculated to remedy
+#         features being on the same scale and stationarity of the time series
+#     Parameters
+#     __________
+#     df: Pandas-like / dask dataframe
+#         For the stacked yfinance data used for numerai, the syntax is <groupby('bloomberg_ticker').apply(func)>
+#     """
+#
+#     if copy: df = df.copy()
+#
+#     ### custom features ###
+#
+#     df['move' + new_col_suffix] = df[close_col] - df[open_col]
+#     df['move_pct' + new_col_suffix] = df['move' + new_col_suffix] / df[open_col]
+#     df['open_minus_prev_close' + new_col_suffix] = df[open_col] - df[close_col].shift()
+#     df['prev_close_pct_chg' + new_col_suffix] = df['move' + new_col_suffix] / df[close_col].shift()
+#     df['range' + new_col_suffix] = df[high_col] - df[low_col]
+#
+#     ### high diffs ###
+#
+#     df['high_move' + new_col_suffix] = df[high_col] - df[open_col]
+#     df['high_minus_prev_high' + new_col_suffix] = df[high_col] - df[high_col].shift()
+#     df['high_minus_prev_low' + new_col_suffix] = df[high_col] - df[low_col].shift()
+#     df['high_minus_close' + new_col_suffix] = df[high_col] - df[close_col]
+#
+#     ### low diffs ###
+#
+#     df['low_move' + new_col_suffix] = df[low_col] - df[open_col]
+#     df['low_minus_prev_low' + new_col_suffix] = df[low_col] - df[low_col].shift()
+#     df['low_minus_prev_high' + new_col_suffix] = df[low_col] - df[high_col].shift()
+#     df['low_minus_close' + new_col_suffix] = df[low_col] - df[close_col]
+#
+#     ### high diff pcts ###
+#
+#     df['high_move_pct' + new_col_suffix] = df['high_move' + new_col_suffix] / df[open_col]
+#     df['high_minus_close_pct' + new_col_suffix] = df['high_minus_close' + new_col_suffix] / df[close_col]
+#     df['low_move_pct' + new_col_suffix] = df['low_move' + new_col_suffix] / df[open_col]
+#     df['low_minus_close_pct' + new_col_suffix] = df['low_minus_close' + new_col_suffix] / df[close_col]
+#
+#     ### prev diffs ###
+#
+#     df['prev_close_minus_low' + new_col_suffix] = df[close_col].shift() - df[low_col]
+#     df['high_minus_prev_close' + new_col_suffix] = df[high_col] - df[close_col].shift()
+#
+#     return df
 
-    Description
-    ___________
-    The output of this function creates additional features that are NOT ready for machine-learning
-        An additional diff and/or pct_change step needs to be calculated to remedy
-        features being on the same scale and stationarity of the time series
-    Parameters
-    __________
-    df: Pandas-like / dask dataframe
-        For the stacked yfinance data used for numerai, the syntax is <groupby('bloomberg_ticker').apply(func)>
-    """
 
-    if copy: df = df.copy()
+class CalcMoves:
 
-    ### custom features ###
+    def __init__(self, copy=True):
+        self.copy = copy
 
-    df['move' + new_col_suffix] = df[close_col] - df[open_col]
-    df['move_pct' + new_col_suffix] = df['move' + new_col_suffix] / df[open_col]
-    df['open_minus_prev_close' + new_col_suffix] = df[open_col] - df[close_col].shift()
-    df['prev_close_pct_chg' + new_col_suffix] = df['move' + new_col_suffix] / df[close_col].shift()
-    df['range' + new_col_suffix] = df[high_col] - df[low_col]
+    def calc_basic_moves(self,
+                         df,
+                         open_col='open',
+                         high_col='high',
+                         low_col='low',
+                         close_col='close',
+                         volume_col='volume',
+                         suffix=''):
 
-    ### high diffs ###
+        if self.copy: df = df.copy()
 
-    df['high_move' + new_col_suffix] = df[high_col] - df[open_col]
-    df['high_minus_prev_high' + new_col_suffix] = df[high_col] - df[high_col].shift()
-    df['high_minus_prev_low' + new_col_suffix] = df[high_col] - df[low_col].shift()
-    df['high_minus_close' + new_col_suffix] = df[high_col] - df[close_col]
+        df['move' + suffix] = df[close_col] - df[open_col]
+        df['move_pct' + suffix] = df['move' + suffix] / df[open_col]
+        df['move_pct_change' + suffix] = df['move' + suffix].pct_change()
 
-    ### low diffs ###
+        df['pct_chg' + suffix] = df['move' + suffix] / df[close_col].shift()
 
-    df['low_move' + new_col_suffix] = df[low_col] - df[open_col]
-    df['low_minus_prev_low' + new_col_suffix] = df[low_col] - df[low_col].shift()
-    df['low_minus_prev_high' + new_col_suffix] = df[low_col] - df[high_col].shift()
-    df['low_minus_close' + new_col_suffix] = df[low_col] - df[close_col]
+        df['range' + suffix] = df[high_col] - df[low_col]
+        df['range_pct_change' + suffix] = df['range' + suffix].pct_change()
 
-    ### high diff pcts ###
+        df['high_move' + suffix] = df[high_col] - df[open_col]
+        df['high_move_pct' + suffix] = df['high_move' + suffix] / df[open_col]
+        df['high_move_pct_change' + suffix] = df['high_move' + suffix].pct_change()
 
-    df['high_move_pct' + new_col_suffix] = df['high_move' + new_col_suffix] / df[open_col]
-    df['high_minus_close_pct' + new_col_suffix] = df['high_minus_close' + new_col_suffix] / df[close_col]
-    df['low_move_pct' + new_col_suffix] = df['low_move' + new_col_suffix] / df[open_col]
-    df['low_minus_close_pct' + new_col_suffix] = df['low_minus_close' + new_col_suffix] / df[close_col]
+        df['low_move' + suffix] = df[low_col] - df[open_col]
+        df['low_move_pct' + suffix] = df['low_move' + suffix] / df[open_col]
+        df['low_move_pct_change' + suffix] = df['low_move' + suffix].pct_change()
 
-    ### prev diffs ###
+        df['volume_pct_change' + suffix] = df[volume_col].pct_change()
 
-    df['prev_close_minus_low' + new_col_suffix] = df[close_col].shift() - df[low_col]
-    df['high_minus_prev_close' + new_col_suffix] = df[high_col] - df[close_col].shift()
+        df['low_minus_close' + suffix] = df[low_col] - df[close_col]
+        df['high_minus_close' + suffix] = df[high_col] - df[close_col]
 
-    return df
+        df['low_minus_prev_close' + suffix] = df[low_col] - df[close_col].shift()
+        df['high_minus_prev_close' + suffix] = df[high_col] - df[close_col].shift()
+
+        return df
+
+    def compute_multi_basic_moves(self, df, basic_move_params, num_workers=1, dask_join_cols=None):
+
+        """
+        Parameters
+        ----------
+        df: pandas dataframe: dataframe that consists of all columns in the values of the basic_move_params dictionary
+        num_workers: int: number of threads to use - backend is dask
+        basic_move_params: dict: a specified dictionary with each value of the dictionary being a dictionary of parameters to pass to calc_basic_moves (called in a loop or in parallel)
+            Example of basic_move_params passed:
+            {
+            'loop1': {'open_col': 'open_1d', 'high_col': 'high_1d', 'low_col': 'low_1d', 'close_col': 'close_1d', 'volume_col': 'volume_1d', 'suffix': '_1d'},
+            'loop2': {'open_col': 'open_1h', 'high_col': 'high_1h', 'low_col': 'low_1h', 'close_col': 'close_1h', 'volume_col': 'volume_1h', 'suffix': '_1h'}
+             }
+
+        Returns
+        -------
+        pandas dataframe with the new columns
+        """
+
+        if dask_join_cols is None and num_workers != 1:
+            raise('You must specify dask_join_cols when num_workers != 1')
+
+        if num_workers == 1:
+            for p in basic_move_params.keys():
+                df = self.calc_basic_moves(df, **basic_move_params[p])
+        else:
+            delayed_list = [delayed(self.calc_basic_moves(df, **basic_move_params[p])) for p in basic_move_params.keys()]
+            tuple_of_dfs = dask.compute(*delayed_list, num_workers=num_workers)
+            list_of_dfs = [tuple_of_dfs[i] for i in range(len(tuple_of_dfs))]
+            df = reduce(lambda x, y: pd.merge(x, y, how='outer', left_index=True, right_index=True), list_of_dfs)
+
+        return df
+
 
 
 def calc_diffs(df, diff_cols, diff_suffix='_diff', copy=True):
@@ -242,7 +320,6 @@ def calc_pct_changes(df, pct_change_cols, pct_change_suffix='_pct_change', copy=
     except ZeroDivisionError:
         df[pct_change_cols] = df[pct_change_cols] + 0.00000000001
         df[[i + pct_change_suffix for i in pct_change_cols]] = df[pct_change_cols].pct_change()
-
     return df
 
 class CreateTargets():
@@ -268,9 +345,7 @@ class CreateTargets():
                            med_buy,
                            med_sell,
                            strong_sell,
-                           threshold,
                            stop,
-                           move_col='move_pct',
                            lm_col='low_move_pct',
                            hm_col='high_move_pct',
                            target_suffix='target_HL5'):
@@ -308,9 +383,7 @@ class CreateTargets():
     def create_targets_HL3(self,
                            buy,
                            sell,
-                           threshold,
                            stop,
-                           move_col='move_pct',
                            lm_col='low_move_pct',
                            hm_col='high_move_pct',
                            target_suffix='target_HL3'):

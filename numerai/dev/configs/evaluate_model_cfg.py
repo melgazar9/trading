@@ -1,0 +1,1 @@
+MODEL_OBJ_FILEPATH = 'D:/trading/objects/XGBRegressor_2022-02-20_14_36_00.pkl'
