@@ -240,15 +240,39 @@ class CalcMoves:
                          close_col='close',
                          volume_col='volume',
                          suffix='',
-                         index_cols=('bloomberg_ticker', 'date'),
+                         index_cols=None,
                          reset_index=True):
+
+        """
+            Description
+            ___________
+            This function is meant to be used to reduce the memory of a pandas df - e.g. changing the dtype from float64 to float32
+
+            Parameters
+            _________
+            df: pandas df
+            open_col: str
+            high_col: str
+            low_col: str
+            close_col: str
+            volume_col: str
+            index_cols: None, list, or tuple of cols that are the indices of the df
+            reset_index: Bool: if true then reset the index after setting index before joining, else return the index_cols as the index in the df
+
+            """
 
         if self.copy: df = df.copy()
 
         tmp_frame = pd.DataFrame()
-        tmp_frame[list(index_cols) + [open_col, high_col, low_col, close_col, volume_col]] = df[list(index_cols) + [open_col, high_col, low_col, close_col, volume_col]]
-        tmp_frame.set_index(list(index_cols), inplace=True)
-        df.set_index(list(index_cols), inplace=True)
+
+        if index_cols is None:
+            preserve_cols = [open_col, high_col, low_col, close_col, volume_col]
+        else:
+            preserve_cols = list(index_cols) + [open_col, high_col, low_col, close_col, volume_col]
+            tmp_frame.set_index(list(index_cols), inplace=True)
+            df.set_index(list(index_cols), inplace=True)
+
+        tmp_frame[preserve_cols] = df[preserve_cols]
 
         tmp_frame['move' + suffix] = tmp_frame[close_col] - tmp_frame[open_col]
         tmp_frame['move_pct' + suffix] = tmp_frame['move' + suffix] / tmp_frame[open_col]
@@ -274,7 +298,10 @@ class CalcMoves:
         tmp_frame['low_minus_prev_close' + suffix] = tmp_frame[low_col] - tmp_frame[close_col].shift()
         tmp_frame['high_minus_prev_close' + suffix] = tmp_frame[high_col] - tmp_frame[close_col].shift()
 
-        df = pd.merge(df, tmp_frame, left_index=True, right_index=True)
+        if index_cols is None:
+            df = pd.concat([df, tmp_frame], axis=1)
+        else:
+            df = pd.merge(df, tmp_frame, left_index=True, right_index=True)
 
         if reset_index:
             df.reset_index(inplace=True)
@@ -282,7 +309,6 @@ class CalcMoves:
                 df.drop('index', axis=1, inplace=True)
 
         return df
-
 
     def compute_multi_basic_moves(self, df, basic_move_params, num_workers=1, dask_join_cols=None, reset_index=True):
 
@@ -318,7 +344,10 @@ class CalcMoves:
             list_of_dfs = [tuple_of_dfs[i] for i in range(len(tuple_of_dfs))]
             df.set_index(dask_join_cols, inplace=True)
             df = reduce(lambda x, y: pd.merge(x, y, how='outer', left_index=True, right_index=True), list_of_dfs)
-            if reset_index: df.reset_index(inplace=True, drop=True)
+            if reset_index:
+                df.reset_index(inplace=True)
+                if 'index' in df.columns:
+                    df.drop('index', axis=1, inplace=True)
 
         return df
 
@@ -452,6 +481,7 @@ def create_lagging_features(df, lagging_map, new_col_prefix='prev', copy=True):
 
 
 
+
 def create_rolling_features(df,
                             rolling_fn='mean',
                             ewm_fn='mean',
@@ -501,7 +531,8 @@ def create_rolling_features(df,
     return df
 
 
-def drop_nas(df, col_contains, exception_cols=[], how=None, copy=True, **dropna_params):
+
+def drop_nas(df, col_contains, exception_cols=None, how=None, copy=True, **dropna_params):
 
     """
     Description:
@@ -518,6 +549,7 @@ def drop_nas(df, col_contains, exception_cols=[], how=None, copy=True, **dropna_
                  In this case, since 'target' (e.g. exception_cols) is non-null, that row will not be dropped
     how: str passed to pd.dropna() - default is None - if None, the function will use 'all' if exception_cols are non-empty.
          If exception cols are empty it uses 'any'. This can be overwritten.
+
     copy: bool - if True make a copy of the df before applying transformations
 
     Returns
@@ -527,6 +559,8 @@ def drop_nas(df, col_contains, exception_cols=[], how=None, copy=True, **dropna_
     """
 
     if copy: df = df.copy()
+
+    exception_cols = [] if exception_cols is None else exception_cols
 
     if isinstance(col_contains, str):
         col_contains = [col_contains]

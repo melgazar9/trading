@@ -83,15 +83,12 @@ basic_move_params = merge_dicts(
          and 'volume_1h_' + str(i) in df_numerai.columns]
     }
 )
+
 df_numerai2 = df_numerai.tail(100000) #  for debugging
 
 
-use_memory_fs = False if platform.system() == 'Windows' else True # pandarallel fails on windows in pycharm with use_memory_fs set to the default True
-pandarallel.initialize(nb_workers=NUM_WORKERS, use_memory_fs=use_memory_fs)
-
-FEATURE_MANIPULATOR_PIPE.steps = list(dict(FEATURE_MANIPULATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
 FEATURE_MANIPULATOR_PIPE = Pipeline(
-    steps=[\
+    steps=[
 
         ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),\
 
@@ -100,24 +97,15 @@ FEATURE_MANIPULATOR_PIPE = Pipeline(
         ('dropna_features', FunctionTransformer(lambda df: df.dropna(axis=1, how='all'))),
 
         ('calc_moves', FunctionTransformer(
-            lambda df: df.groupby(TICKER_COL, group_keys=False).apply(lambda x: CalcMoves(copy=False).compute_multi_basic_moves(x,
+            lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(lambda x: CalcMoves(copy=False).compute_multi_basic_moves(x,
                 basic_move_params={k:v for k,v in basic_move_params.items() if all(col in df.columns for col in list(basic_move_params[k].values())[0:-1])},
                 dask_join_cols=[DATE_COL, TICKER_COL])))),
 
-        ('calc_diffs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
+        ('calc_diffs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
             lambda x: calc_diffs(x, diff_cols=np.intersect1d(x.columns, [i for i in eval(DIFF_COLS_TO_SELECT_STRING) if i in x.columns]))))),
 
-        ('calc_pct_chgs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
+        ('calc_pct_chgs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
             lambda df: calc_pct_changes(df, pct_change_cols=np.intersect1d(df.columns, [i for i in eval(PCT_CHG_COLS_TO_SELECT_STRING) if i in df.columns]))))),
-
-        ('create_targets_HL3', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys= False).apply(
-            lambda x: CreateTargets(x, copy=False).create_targets_HL3(**TARGETS_HL3_PARAMS)))),\
-
-        ('create_targets_HL5', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
-            lambda df: CreateTargets(df, copy=False).create_targets_HL5(**TARGETS_HL5_PARAMS)))),\
-
-        ('lagging_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
-            lambda df: create_lagging_features(df, **LAGGING_FEATURES_PARAMS)))),\
 
         ('calc_move_iar', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
             lambda df: calc_move_iar(df, **IAR_PARAMS)))),\
@@ -144,9 +132,13 @@ FEATURE_MANIPULATOR_PIPE = Pipeline(
         ]\
     )
 
+use_memory_fs = False if platform.system() == 'Windows' else True # pandarallel fails on windows in pycharm with use_memory_fs set to the default True
+pandarallel.initialize(nb_workers=NUM_WORKERS, use_memory_fs=use_memory_fs)
+
+FEATURE_MANIPULATOR_PIPE.steps = list(dict(FEATURE_MANIPULATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
 feature_creator = FEATURE_MANIPULATOR_PIPE.fit(df_numerai2)
 
-df_numerai_transformed = feature_creator.transform(df_numerai)
+df_numerai_transformed = feature_creator.transform(df_numerai2)
 
 
 ### Timeseries Split ###
