@@ -17,8 +17,8 @@ START_DATE = '2015-01-01'
 ### path params ###
 
 SAVE_OBJECT = True
-OBJECT_OUTPATH = 'D:/trading/objects/'
-LOAD_DATA_FILEPATH = 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_2022-02-19.feather'
+OBJECT_OUTPATH = '/media/melgazar9/HDD_10TB/trading/objects/' # 'D:/trading/objects/'
+LOAD_DATA_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/processed_data/df_numerai_build_2022-02-19.feather' # 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_2022-02-19.feather' # windows
 
 ### feature params ###
 

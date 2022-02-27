@@ -83,8 +83,13 @@ basic_move_params = merge_dicts(
          and 'volume_1h_' + str(i) in df_numerai.columns]
     }
 )
-df_numerai2 = df_numerai.tail(10000)
+df_numerai2 = df_numerai.tail(100000) #  for debugging
 
+
+use_memory_fs = False if platform.system() == 'Windows' else True # pandarallel fails on windows in pycharm with use_memory_fs set to the default True
+pandarallel.initialize(nb_workers=NUM_WORKERS, use_memory_fs=use_memory_fs)
+
+FEATURE_MANIPULATOR_PIPE.steps = list(dict(FEATURE_MANIPULATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
 FEATURE_MANIPULATOR_PIPE = Pipeline(
     steps=[\
 
@@ -108,43 +113,40 @@ FEATURE_MANIPULATOR_PIPE = Pipeline(
         ('create_targets_HL3', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys= False).apply(
             lambda x: CreateTargets(x, copy=False).create_targets_HL3(**TARGETS_HL3_PARAMS)))),\
 
-        ('create_targets_HL5', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                            .apply(lambda df: CreateTargets(df, copy=False).create_targets_HL5(**TARGETS_HL5_PARAMS)))),\
+        ('create_targets_HL5', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
+            lambda df: CreateTargets(df, copy=False).create_targets_HL5(**TARGETS_HL5_PARAMS)))),\
 
-        ('lagging_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                          .apply(lambda df: create_lagging_features(df, **LAGGING_FEATURES_PARAMS)))),\
+        ('lagging_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
+            lambda df: create_lagging_features(df, **LAGGING_FEATURES_PARAMS)))),\
 
-        ('calc_move_iar', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                       .apply(lambda df: calc_move_iar(df, **IAR_PARAMS)))),\
+        ('calc_move_iar', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
+            lambda df: calc_move_iar(df, **IAR_PARAMS)))),\
 
         # when calling rolling features below, it is difficult to parameterize this as part of the config because the above lagging features
         # pipeline creates features that we want to take rolling features for, which are not columns in the original df
-        ('rolling_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                          .apply(lambda x: create_rolling_features(x,
-                                                                                   rolling_params = {'window': 30},
-                                                                                   rolling_fn='mean',
-                                                                                   ewm_fn='mean',
-                                                                                   ewm_params={'com':.5},
-                                                                                   rolling_cols=[i for i in x.columns if 'move' in i],
-                                                                                   ewm_cols=[i for i in x.columns if 'move' in i],
-                                                                                   join_method='outer',
-                                                                                   copy=False)
-                                                 ))),\
+        ('rolling_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
+            lambda x: create_rolling_features(x,
+                                              rolling_params = {'window': 30},
+                                              rolling_fn='mean',
+                                              ewm_fn='mean',
+                                              ewm_params={'com':.5},
+                                              rolling_cols=[i for i in x.columns if 'move' in i],
+                                              ewm_cols=[i for i in x.columns if 'move' in i],
+                                              join_method='outer',
+                                              copy=False)
+        ))),\
 
-        ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                        .apply(lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))\
+        ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
+            lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))
 
         # ('conditional_feature_dropna', FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS))),\
         # ('sort_df', FunctionTransformer(lambda df: df.sort_values(by=[DATE_COL, TICKER_COL]))) # has to be outside of the pipeline
         ]\
     )
 
-use_memory_fs = False if platform.system() == 'Windows' else True # pandarallel fails on windows in pycharm with use_memory_fs set to the default True
-pandarallel.initialize(nb_workers=NUM_WORKERS, use_memory_fs=use_memory_fs)
-
-FEATURE_MANIPULATOR_PIPE.steps = list(dict(FEATURE_MANIPULATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
 feature_creator = FEATURE_MANIPULATOR_PIPE.fit(df_numerai2)
-df_numerai3 = feature_creator.transform(df_numerai2)
+
+df_numerai_transformed = feature_creator.transform(df_numerai)
 
 
 ### Timeseries Split ###

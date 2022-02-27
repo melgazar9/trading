@@ -239,40 +239,55 @@ class CalcMoves:
                          low_col='low',
                          close_col='close',
                          volume_col='volume',
-                         suffix=''):
+                         suffix='',
+                         index_cols=('bloomberg_ticker', 'date'),
+                         reset_index=True):
 
         if self.copy: df = df.copy()
 
-        df['move' + suffix] = df[close_col] - df[open_col]
-        df['move_pct' + suffix] = df['move' + suffix] / df[open_col]
-        df['move_pct_change' + suffix] = df['move' + suffix].pct_change()
+        tmp_frame = pd.DataFrame()
+        tmp_frame[list(index_cols) + [open_col, high_col, low_col, close_col, volume_col]] = df[list(index_cols) + [open_col, high_col, low_col, close_col, volume_col]]
+        tmp_frame.set_index(list(index_cols), inplace=True)
+        df.set_index(list(index_cols), inplace=True)
 
-        df['pct_chg' + suffix] = df['move' + suffix] / df[close_col].shift()
+        tmp_frame['move' + suffix] = tmp_frame[close_col] - tmp_frame[open_col]
+        tmp_frame['move_pct' + suffix] = tmp_frame['move' + suffix] / tmp_frame[open_col]
+        tmp_frame['move_pct_change' + suffix] = tmp_frame['move' + suffix].pct_change()
 
-        df['range' + suffix] = df[high_col] - df[low_col]
-        df['range_pct_change' + suffix] = df['range' + suffix].pct_change()
+        tmp_frame['pct_chg' + suffix] = tmp_frame['move' + suffix] / tmp_frame[close_col].shift()
 
-        df['high_move' + suffix] = df[high_col] - df[open_col]
-        df['high_move_pct' + suffix] = df['high_move' + suffix] / df[open_col]
-        df['high_move_pct_change' + suffix] = df['high_move' + suffix].pct_change()
+        tmp_frame['range' + suffix] = tmp_frame[high_col] - tmp_frame[low_col]
+        tmp_frame['range_pct_change' + suffix] = tmp_frame['range' + suffix].pct_change()
 
-        df['low_move' + suffix] = df[low_col] - df[open_col]
-        df['low_move_pct' + suffix] = df['low_move' + suffix] / df[open_col]
-        df['low_move_pct_change' + suffix] = df['low_move' + suffix].pct_change()
+        tmp_frame['high_move' + suffix] = tmp_frame[high_col] - tmp_frame[open_col]
+        tmp_frame['high_move_pct' + suffix] = tmp_frame['high_move' + suffix] / tmp_frame[open_col]
+        tmp_frame['high_move_pct_change' + suffix] = tmp_frame['high_move' + suffix].pct_change()
 
-        df['volume_pct_change' + suffix] = df[volume_col].pct_change()
+        tmp_frame['low_move' + suffix] = tmp_frame[low_col] - tmp_frame[open_col]
+        tmp_frame['low_move_pct' + suffix] = tmp_frame['low_move' + suffix] / tmp_frame[open_col]
+        tmp_frame['low_move_pct_change' + suffix] = tmp_frame['low_move' + suffix].pct_change()
 
-        df['low_minus_close' + suffix] = df[low_col] - df[close_col]
-        df['high_minus_close' + suffix] = df[high_col] - df[close_col]
+        tmp_frame['volume_pct_change' + suffix] = tmp_frame[volume_col].pct_change()
 
-        df['low_minus_prev_close' + suffix] = df[low_col] - df[close_col].shift()
-        df['high_minus_prev_close' + suffix] = df[high_col] - df[close_col].shift()
+        tmp_frame['low_minus_close' + suffix] = tmp_frame[low_col] - tmp_frame[close_col]
+        tmp_frame['high_minus_close' + suffix] = tmp_frame[high_col] - tmp_frame[close_col]
+        tmp_frame['low_minus_prev_close' + suffix] = tmp_frame[low_col] - tmp_frame[close_col].shift()
+        tmp_frame['high_minus_prev_close' + suffix] = tmp_frame[high_col] - tmp_frame[close_col].shift()
+
+        df = pd.merge(df, tmp_frame, left_index=True, right_index=True)
+
+        if reset_index:
+            df.reset_index(inplace=True)
+            if 'index' in df.columns:
+                df.drop('index', axis=1, inplace=True)
 
         return df
 
-    def compute_multi_basic_moves(self, df, basic_move_params, num_workers=1, dask_join_cols=None):
+
+    def compute_multi_basic_moves(self, df, basic_move_params, num_workers=1, dask_join_cols=None, reset_index=True):
 
         """
+
         Parameters
         ----------
         df: pandas dataframe: dataframe that consists of all columns in the values of the basic_move_params dictionary
@@ -283,10 +298,12 @@ class CalcMoves:
             'loop1': {'open_col': 'open_1d', 'high_col': 'high_1d', 'low_col': 'low_1d', 'close_col': 'close_1d', 'volume_col': 'volume_1d', 'suffix': '_1d'},
             'loop2': {'open_col': 'open_1h', 'high_col': 'high_1h', 'low_col': 'low_1h', 'close_col': 'close_1h', 'volume_col': 'volume_1h', 'suffix': '_1h'}
              }
+        dask_join_cols: list: a list of cols to combine the parallelized computed dataframes
 
         Returns
         -------
         pandas dataframe with the new columns
+
         """
 
         if dask_join_cols is None and num_workers != 1:
@@ -299,13 +316,16 @@ class CalcMoves:
             delayed_list = [delayed(self.calc_basic_moves(df, **basic_move_params[p])) for p in basic_move_params.keys()]
             tuple_of_dfs = dask.compute(*delayed_list, num_workers=num_workers)
             list_of_dfs = [tuple_of_dfs[i] for i in range(len(tuple_of_dfs))]
+            df.set_index(dask_join_cols, inplace=True)
             df = reduce(lambda x, y: pd.merge(x, y, how='outer', left_index=True, right_index=True), list_of_dfs)
+            if reset_index: df.reset_index(inplace=True, drop=True)
 
         return df
 
 
 
 def calc_diffs(df, diff_cols, diff_suffix='_diff', copy=True):
+
     if copy: df = df.copy()
     df[[i + diff_suffix for i in diff_cols]] = df[diff_cols].diff()
     return df
