@@ -12,20 +12,23 @@ import numerapi
 from collections import Counter
 from skimpy import clean_columns
 
-from pandarallel import pandarallel # parallel pandas
+from pandarallel import pandarallel  # parallel pandas
 import platform
-
-os.environ['NUMEXPR_MAX_THREADS'] = '32'
-os.environ['NUMEXPR_NUM_THREADS'] = '16'
-
+import time
 sys.path.append(os.getcwd())
+
 from dev.scripts.ML_utils import * # run if on local machine
 from dev.scripts.trading_utils import * # run if on local machine
 from numerai.dev.scripts.numerai_utils import *
 from numerai.dev.configs.prep_and_train_cfg import *
 
+os.environ['NUMEXPR_MAX_THREADS'] = '32'
+os.environ['NUMEXPR_NUM_THREADS'] = '16'
+
+start_time = time.time()
 
 pd.set_option('display.float_format', lambda x: '%.5f' % x)
+
 config = ConfigParser()
 config.read('numerai/numerai_keys.ini')
 
@@ -42,13 +45,16 @@ elif LOAD_DATA_FILEPATH.endswith('pq') or LOAD_DATA_FILEPATH.endswith('parquet')
 elif LOAD_DATA_FILEPATH.endswith('csv'):
     df_numerai = pd.read_csv(LOAD_DATA_FILEPATH)
 
+
 ### dropnas ###
 
 if DROP_NA_TARGETS:
     df_numerai.dropna(subset=[TARGET_COL], inplace=True)
 
+
 if START_DATE:
     df_numerai = df_numerai[df_numerai[DATE_COL] >= START_DATE]
+
 gc.collect()
 
 
@@ -84,7 +90,7 @@ basic_move_params = merge_dicts(
     }
 )
 
-# df_numerai = df_numerai.tail(100000) #  for debugging
+# df_numerai = df_numerai.tail(100000) # for debugging
 
 
 FEATURE_MANIPULATOR_PIPE = Pipeline(
@@ -95,7 +101,6 @@ FEATURE_MANIPULATOR_PIPE = Pipeline(
         ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET_COL, 'yahoo_ticker'], how='any'))),\
 
         ('dropna_features', FunctionTransformer(lambda df: df.dropna(axis=1, how='all'))),
-
 
         ('calc_moves', FunctionTransformer(
             lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(lambda x: CalcMoves(copy=False).compute_multi_basic_moves(x,
@@ -116,6 +121,7 @@ FEATURE_MANIPULATOR_PIPE = Pipeline(
 
         # when calling rolling features below, it is difficult to parameterize this as part of the config because the above lagging features
         # pipeline creates features that we want to take rolling features for, which are not columns in the original df
+
         ('rolling_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
             lambda x: create_rolling_features(x,
                                               rolling_params = {'window': 30},
@@ -145,6 +151,7 @@ feature_creator = FEATURE_MANIPULATOR_PIPE.fit(df_numerai)
 df_numerai_transformed = feature_creator.transform(df_numerai)
 df_numerai_transformed = pd.read_feather('~/tmp.feather')
 
+
 ### Timeseries Split ###
 
 TIMESERIES_SPLIT_PARAMS['copy'] = False
@@ -152,6 +159,7 @@ timeseries_split(df_numerai, **TIMESERIES_SPLIT_PARAMS)
 
 input_features = eval(INPUT_FEATURES_STRING)
 preserve_vars = list(set(PRESERVE_VARS + eval(PRESERVE_VARS_STRING)))
+
 drop_vars = eval(DROP_VARS_STRING)
 
 X_train, y_train = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][TARGET_COL]
@@ -163,14 +171,17 @@ gc.collect()
 ### Preprocessing ###
 
 PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
+
 feature_transformer = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
 final_features = get_column_names_from_ColumnTransformer(feature_transformer)
+
 assert len([item for item, count in Counter(final_features).items() if count > 1]) == 0, 'final features has duplicate column names!'
 
 X_train_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_train), columns=final_features))
 X_val_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_val), columns=final_features))
 X_test_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_test), columns=final_features))
 X_transformed = clean_columns(pd.concat([X_train_transformed, X_val_transformed, X_test_transformed]))
+
 final_features = X_train_transformed.columns
 
 ### Train model ###
@@ -184,6 +195,7 @@ model_obj = RunModel(X_test=X_transformed,
                      df_full=df_numerai,
                      **RUN_MODEL_PARAMS).train_and_predict()
 
+
 model_obj['feature_creator'] = feature_creator
 del feature_creator
 
@@ -193,8 +205,10 @@ del feature_transformer
 model_obj['input_features'] = input_features
 model_obj['final_features'] = final_features
 model_obj['final_dtype_mapping'] = model_obj['df_pred'].dtypes.to_dict()
+model_obj['dropped_features'] = drop_vars
 
 if SAVE_OBJECT:
+    save_start_time = time.time()
     dill.dump(model_obj, open(OBJECT_OUTPATH + \
                                type(model_obj['model']).__name__ + '_' + \
                                str(datetime.datetime.today()\
@@ -202,3 +216,8 @@ if SAVE_OBJECT:
                                    .replace(' ', '_')\
                                    .replace(':', '_') + '.pkl',\
                                'wb'))
+    save_end_time = time.time()
+    print("\nIt took %s minutes to save the object\n" % round((save_end_time - save_start_time) / 60, 3))
+
+end_time = time.time()
+print("\nThe whole process took %s minutes\n" % round((end_time - start_time)/60, 3))
