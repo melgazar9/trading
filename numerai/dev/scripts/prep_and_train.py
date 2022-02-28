@@ -207,6 +207,7 @@ model_obj['final_features'] = final_features
 model_obj['final_dtype_mapping'] = model_obj['df_pred'].dtypes.to_dict()
 model_obj['dropped_features'] = drop_vars
 
+
 if SAVE_OBJECT:
     save_start_time = time.time()
     dill.dump(model_obj, open(OBJECT_OUTPATH + \
@@ -220,4 +221,5 @@ if SAVE_OBJECT:
     print("\nIt took %s minutes to save the object\n" % round((save_end_time - save_start_time) / 60, 3))
 
 end_time = time.time()
+
 print("\nThe whole process took %s minutes\n" % round((end_time - start_time)/60, 3))
