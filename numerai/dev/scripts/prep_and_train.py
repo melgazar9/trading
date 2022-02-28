@@ -84,7 +84,7 @@ basic_move_params = merge_dicts(
     }
 )
 
-df_numerai2 = df_numerai.tail(100000) #  for debugging
+# df_numerai = df_numerai.tail(100000) #  for debugging
 
 
 FEATURE_MANIPULATOR_PIPE = Pipeline(
@@ -96,23 +96,27 @@ FEATURE_MANIPULATOR_PIPE = Pipeline(
 
         ('dropna_features', FunctionTransformer(lambda df: df.dropna(axis=1, how='all'))),
 
+
         ('calc_moves', FunctionTransformer(
             lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(lambda x: CalcMoves(copy=False).compute_multi_basic_moves(x,
                 basic_move_params={k:v for k,v in basic_move_params.items() if all(col in df.columns for col in list(basic_move_params[k].values())[0:-1])},
                 dask_join_cols=[DATE_COL, TICKER_COL])))),
 
         ('calc_diffs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
-            lambda x: calc_diffs(x, diff_cols=np.intersect1d(x.columns, [i for i in eval(DIFF_COLS_TO_SELECT_STRING) if i in x.columns]))))),
+            lambda x: calc_diffs(x,
+                                 diff_cols=np.intersect1d(x.columns, [i for i in eval(DIFF_COLS_TO_SELECT_STRING) if i in x.columns]),
+                                 index_cols=[DATE_COL, TICKER_COL])))),
 
         ('calc_pct_chgs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
-            lambda df: calc_pct_changes(df, pct_change_cols=np.intersect1d(df.columns, [i for i in eval(PCT_CHG_COLS_TO_SELECT_STRING) if i in df.columns]))))),
+            lambda df: calc_pct_changes(df, pct_change_cols=np.intersect1d(df.columns, [i for i in eval(PCT_CHG_COLS_TO_SELECT_STRING) if i in df.columns]),
+                                        index_cols=[DATE_COL, TICKER_COL])))),
 
-        ('calc_move_iar', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
+        ('calc_move_iar', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
             lambda df: calc_move_iar(df, **IAR_PARAMS)))),\
 
         # when calling rolling features below, it is difficult to parameterize this as part of the config because the above lagging features
         # pipeline creates features that we want to take rolling features for, which are not columns in the original df
-        ('rolling_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
+        ('rolling_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
             lambda x: create_rolling_features(x,
                                               rolling_params = {'window': 30},
                                               rolling_fn='mean',
@@ -121,10 +125,11 @@ FEATURE_MANIPULATOR_PIPE = Pipeline(
                                               rolling_cols=[i for i in x.columns if 'move' in i],
                                               ewm_cols=[i for i in x.columns if 'move' in i],
                                               join_method='outer',
+                                              index_cols=[DATE_COL, TICKER_COL],
                                               copy=False)
-        ))),\
+        ))),
 
-        ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).apply(
+        ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
             lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))
 
         # ('conditional_feature_dropna', FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS))),\
@@ -136,10 +141,9 @@ use_memory_fs = False if platform.system() == 'Windows' else True # pandarallel 
 pandarallel.initialize(nb_workers=NUM_WORKERS, use_memory_fs=use_memory_fs)
 
 FEATURE_MANIPULATOR_PIPE.steps = list(dict(FEATURE_MANIPULATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
-feature_creator = FEATURE_MANIPULATOR_PIPE.fit(df_numerai2)
-
-df_numerai_transformed = feature_creator.transform(df_numerai2)
-
+feature_creator = FEATURE_MANIPULATOR_PIPE.fit(df_numerai)
+df_numerai_transformed = feature_creator.transform(df_numerai)
+df_numerai_transformed = pd.read_feather('~/tmp.feather')
 
 ### Timeseries Split ###
 
@@ -161,7 +165,7 @@ gc.collect()
 PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
 feature_transformer = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
 final_features = get_column_names_from_ColumnTransformer(feature_transformer)
-assert len([item for item, count in Counter(final_features).items() if count > 1]) == 0
+assert len([item for item, count in Counter(final_features).items() if count > 1]) == 0, 'final features has duplicate column names!'
 
 X_train_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_train), columns=final_features))
 X_val_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_val), columns=final_features))
@@ -180,8 +184,8 @@ model_obj = RunModel(X_test=X_transformed,
                      df_full=df_numerai,
                      **RUN_MODEL_PARAMS).train_and_predict()
 
-model_obj['feature_manipulator'] = feature_manipulator
-del feature_manipulator
+model_obj['feature_creator'] = feature_creator
+del feature_creator
 
 model_obj['feature_transformer'] = feature_transformer
 del feature_transformer

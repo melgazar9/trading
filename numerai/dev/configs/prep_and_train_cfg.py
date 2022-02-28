@@ -39,7 +39,7 @@ TIMESERIES_SPLIT_PARAMS = {'train_prop': .7,
                            'sort_df_params': {}}
 
 
-
+CONVERT_DTYPE_PARAMS = {'verbose': False}
 
 ########################################
 ###### Feature Engineering Params ######
@@ -109,37 +109,37 @@ DIFF_COLS_TO_SELECT_STRING = "[i for i in df_numerai.columns if i not in [DATE_C
 PCT_CHG_COLS_TO_SELECT_STRING = "[i for i in df_numerai.columns if i not in [DATE_COL, TICKER_COL, TARGET_COL] and not ('dat' in i.lower() or 'target' in i.lower() or 'ticker' in i.lower())]"
 
 
+
 """ feature creation pipeline """
 
-# this will be done in the code for now
+# this will be done in the main source code until I can figure out a better way to make it easily configurable
 
-
-FEATURE_CREATION_PARAMS = Pipeline(\
-    steps=[\
-
-        # ('create_naive_features', FunctionTransformer(lambda df: CreateFeatures(**NAIVE_FEATURES_PARAMS).compute_naive_features(use_symbol_prefix=False))),
-
-        ('create_targets_HL3', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                            .apply(lambda df: CreateTargets(df, copy=False)\
-                                            .create_targets_HL3(**TARGETS_HL3_PARAMS)))),\
-
-        ('create_targets_HL5', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                            .apply(lambda df: CreateTargets(df, copy=False)\
-                                            .create_targets_HL5(**TARGETS_HL5_PARAMS)))),\
-
-        ('lagging_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                          .apply(lambda df: create_lagging_features(df, **LAGGING_FEATURES_PARAMS)))),\
-
-        ('rolling_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                          .apply(lambda df: create_rolling_features(df, **ROLLING_FEATURES_PARAMS)))),\
-
-        ('calc_move_iar', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                       .apply(lambda df: calc_move_iar(df, **IAR_PARAMS)))),\
-
-        ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
-                                        .apply(lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))\
-        ]
-    )
+# FEATURE_CREATION_PARAMS = Pipeline(\
+#     steps=[\
+#
+#         # ('create_naive_features', FunctionTransformer(lambda df: CreateFeatures(**NAIVE_FEATURES_PARAMS).compute_naive_features(use_symbol_prefix=False))),
+#
+#         ('create_targets_HL3', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+#                                             .apply(lambda df: CreateTargets(df, copy=False)\
+#                                             .create_targets_HL3(**TARGETS_HL3_PARAMS)))),\
+#
+#         ('create_targets_HL5', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+#                                             .apply(lambda df: CreateTargets(df, copy=False)\
+#                                             .create_targets_HL5(**TARGETS_HL5_PARAMS)))),\
+#
+#         ('lagging_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+#                                           .apply(lambda df: create_lagging_features(df, **LAGGING_FEATURES_PARAMS)))),\
+#
+#         ('rolling_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+#                                           .apply(lambda df: create_rolling_features(df, **ROLLING_FEATURES_PARAMS)))),\
+#
+#         ('calc_move_iar', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+#                                        .apply(lambda df: calc_move_iar(df, **IAR_PARAMS)))),\
+#
+#         ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False)\
+#                                         .apply(lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))\
+#         ]
+#     )
 
 ### Main machine-learning feature engineering pipeline ###
 

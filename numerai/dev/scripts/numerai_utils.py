@@ -5,6 +5,37 @@ import simplejson
 import yfinance
 import datetime
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
+import warnings
+import dask
+from dask import delayed
+
+class DataValidator():
+    """
+
+    Objective: Validate all outputs from a pandas df
+    This class does not specifically return an output.
+
+    Parameters
+    ----------
+
+    df: A pandas dataframe
+
+    """
+
+    def __init__(self, df):
+        self.df = df
+
+    def _check_duplicate_colnames(self):
+        duplicate_colnames = self.df.columns[self.df.columns.duplicated()]
+
+        if len(duplicate_colnames):
+            warnings.warn("The df has duplicate column names! \nDuplicate column names: {}" \
+                          .format(duplicate_colnames))
+
+        return duplicate_colnames
+
+    def validate_data(self):
+        self._check_duplicate_colnames()
 
 
 def download_yfinance_data(tickers,
@@ -47,7 +78,6 @@ def download_yfinance_data(tickers,
         yfinance_params['progress'] = False
 
     intraday_lookback_days = datetime.datetime.today().date() - datetime.timedelta(days=max_intraday_lookback_days)
-
     start_date = yfinance_params['start']
 
     if num_workers == 1:
@@ -71,6 +101,7 @@ def download_yfinance_data(tickers,
                 ticker_chunks = [' '.join(tickers[i:i+n_chunks]) for i in range(0, len(tickers), n_chunks)]
                 chunk_dfs_lst = []
                 column_order = ['date', yahoo_ticker_colname, 'Adj Close', 'Close', 'High', 'Low', 'Open', 'Volume']
+
                 for chunk in ticker_chunks:
                     try:
                         if n_chunks == 1 or len(chunk.split(' ')) == 1:
@@ -90,6 +121,7 @@ def download_yfinance_data(tickers,
                             new_column_order = ['date', yahoo_ticker_colname] + [x + '_' + i for x in column_order if not x in ['date', yahoo_ticker_colname]]
                             df_tmp = df_tmp[new_column_order]
                         chunk_dfs_lst.append(df_tmp)
+
                     except simplejson.errors.JSONDecodeError:
                         pass
 
@@ -121,14 +153,15 @@ def download_yfinance_data(tickers,
 
 
 def convert_df_dtypes(df,
-                     exclude_cols=[],
+                     exclude_cols=None,
                      new_float_dtype='float32',
                      new_int_dtype='Int64',
                      new_obj_dtype='category',
                      float_qualifiers='auto',
                      int_qualifiers='auto',
                      obj_qualifiers='auto',
-                     make_copy=True):
+                     verbose=True,
+                     make_copy=False):
 
     """
     Description
@@ -148,10 +181,15 @@ def convert_df_dtypes(df,
     obj_qualifiers: same as float_qualifiers but for objects
 
     """
+
     if make_copy: df = df.copy()
+    exclude_cols = [] if exclude_cols is None else exclude_cols
+
     dtype_df = pd.DataFrame(df.dtypes.reset_index()).rename(columns={'index': 'col', 0: 'dtype'})
 
-    unique_dtypes = dtype_df['dtype'].unique()
+    if verbose:
+        unique_dtypes = dtype_df['dtype'].unique()
+        print('\nunique dtypes: {}'.format(unique_dtypes), '\n')
 
     if float_qualifiers == 'auto':
         float_cols = [i for i in df.select_dtypes([np.floating]).columns if not i in exclude_cols]
@@ -162,74 +200,11 @@ def convert_df_dtypes(df,
     if obj_qualifiers == 'auto':
         obj_cols = [i for i in df.select_dtypes([np.object_]).columns if not i in exclude_cols]
         df[obj_cols] = df[obj_cols].astype(new_obj_dtype)
-
     return df
 
-# def create_naive_features_single_symbol(df,
-#                                         symbol='',
-#                                         symbol_sep='',
-#                                         open_col='open_1d',
-#                                         high_col='high_1d',
-#                                         low_col='low_1d',
-#                                         close_col='adj_close_1d',
-#                                         volume_col='volume_1d',
-#                                         new_col_suffix='_1d',
-#                                         copy=True):
-#     """
-#
-#     Description
-#     ___________
-#     The output of this function creates additional features that are NOT ready for machine-learning
-#         An additional diff and/or pct_change step needs to be calculated to remedy
-#         features being on the same scale and stationarity of the time series
-#     Parameters
-#     __________
-#     df: Pandas-like / dask dataframe
-#         For the stacked yfinance data used for numerai, the syntax is <groupby('bloomberg_ticker').apply(func)>
-#     """
-#
-#     if copy: df = df.copy()
-#
-#     ### custom features ###
-#
-#     df['move' + new_col_suffix] = df[close_col] - df[open_col]
-#     df['move_pct' + new_col_suffix] = df['move' + new_col_suffix] / df[open_col]
-#     df['open_minus_prev_close' + new_col_suffix] = df[open_col] - df[close_col].shift()
-#     df['prev_close_pct_chg' + new_col_suffix] = df['move' + new_col_suffix] / df[close_col].shift()
-#     df['range' + new_col_suffix] = df[high_col] - df[low_col]
-#
-#     ### high diffs ###
-#
-#     df['high_move' + new_col_suffix] = df[high_col] - df[open_col]
-#     df['high_minus_prev_high' + new_col_suffix] = df[high_col] - df[high_col].shift()
-#     df['high_minus_prev_low' + new_col_suffix] = df[high_col] - df[low_col].shift()
-#     df['high_minus_close' + new_col_suffix] = df[high_col] - df[close_col]
-#
-#     ### low diffs ###
-#
-#     df['low_move' + new_col_suffix] = df[low_col] - df[open_col]
-#     df['low_minus_prev_low' + new_col_suffix] = df[low_col] - df[low_col].shift()
-#     df['low_minus_prev_high' + new_col_suffix] = df[low_col] - df[high_col].shift()
-#     df['low_minus_close' + new_col_suffix] = df[low_col] - df[close_col]
-#
-#     ### high diff pcts ###
-#
-#     df['high_move_pct' + new_col_suffix] = df['high_move' + new_col_suffix] / df[open_col]
-#     df['high_minus_close_pct' + new_col_suffix] = df['high_minus_close' + new_col_suffix] / df[close_col]
-#     df['low_move_pct' + new_col_suffix] = df['low_move' + new_col_suffix] / df[open_col]
-#     df['low_minus_close_pct' + new_col_suffix] = df['low_minus_close' + new_col_suffix] / df[close_col]
-#
-#     ### prev diffs ###
-#
-#     df['prev_close_minus_low' + new_col_suffix] = df[close_col].shift() - df[low_col]
-#     df['high_minus_prev_close' + new_col_suffix] = df[high_col] - df[close_col].shift()
-#
-#     return df
+class CalcMoves(DataValidator):
 
-
-class CalcMoves:
-
-    def __init__(self, copy=True):
+    def __init__(self, copy=False):
         self.copy = copy
 
     def calc_basic_moves(self,
@@ -263,16 +238,13 @@ class CalcMoves:
 
         if self.copy: df = df.copy()
 
-        tmp_frame = pd.DataFrame()
-
         if index_cols is None:
             preserve_cols = [open_col, high_col, low_col, close_col, volume_col]
         else:
-            preserve_cols = list(index_cols) + [open_col, high_col, low_col, close_col, volume_col]
-            tmp_frame.set_index(list(index_cols), inplace=True)
+            preserve_cols = [open_col, high_col, low_col, close_col, volume_col]
             df.set_index(list(index_cols), inplace=True)
 
-        tmp_frame[preserve_cols] = df[preserve_cols]
+        tmp_frame = df[preserve_cols]
 
         tmp_frame['move' + suffix] = tmp_frame[close_col] - tmp_frame[open_col]
         tmp_frame['move_pct' + suffix] = tmp_frame['move' + suffix] / tmp_frame[open_col]
@@ -290,7 +262,6 @@ class CalcMoves:
         tmp_frame['low_move' + suffix] = tmp_frame[low_col] - tmp_frame[open_col]
         tmp_frame['low_move_pct' + suffix] = tmp_frame['low_move' + suffix] / tmp_frame[open_col]
         tmp_frame['low_move_pct_change' + suffix] = tmp_frame['low_move' + suffix].pct_change()
-
         tmp_frame['volume_pct_change' + suffix] = tmp_frame[volume_col].pct_change()
 
         tmp_frame['low_minus_close' + suffix] = tmp_frame[low_col] - tmp_frame[close_col]
@@ -299,14 +270,17 @@ class CalcMoves:
         tmp_frame['high_minus_prev_close' + suffix] = tmp_frame[high_col] - tmp_frame[close_col].shift()
 
         if index_cols is None:
-            df = pd.concat([df, tmp_frame], axis=1)
+            df = pd.concat([df, tmp_frame[[i for i in tmp_frame.columns if i not in preserve_cols]]], axis=1)
         else:
-            df = pd.merge(df, tmp_frame, left_index=True, right_index=True)
+            df = pd.merge(df, tmp_frame[[i for i in tmp_frame.columns if i not in preserve_cols]], left_index=True, right_index=True)
 
         if reset_index:
             df.reset_index(inplace=True)
             if 'index' in df.columns:
                 df.drop('index', axis=1, inplace=True)
+
+        super().__init__(df) # initialize DataValidator with df as the input
+        self.validate_data()
 
         return df
 
@@ -343,37 +317,117 @@ class CalcMoves:
             tuple_of_dfs = dask.compute(*delayed_list, num_workers=num_workers)
             list_of_dfs = [tuple_of_dfs[i] for i in range(len(tuple_of_dfs))]
             df.set_index(dask_join_cols, inplace=True)
-            df = reduce(lambda x, y: pd.merge(x, y, how='outer', left_index=True, right_index=True), list_of_dfs)
+
+            for frame in list_of_dfs:
+                frame.set_index(dask_join_cols, inplace=True)
+
+            df = reduce(lambda x, y: pd.merge(x, y[[i for i in y.columns if i not in x.columns]], how='outer', left_index=True, right_index=True), list_of_dfs)
+
             if reset_index:
                 df.reset_index(inplace=True)
                 if 'index' in df.columns:
                     df.drop('index', axis=1, inplace=True)
 
+        super().__init__(df)  # initialize DataValidator with df as the input
+        self.validate_data()
         return df
 
 
 
-def calc_diffs(df, diff_cols, diff_suffix='_diff', copy=True):
+def calc_diffs(df, diff_cols, diff_suffix='_diff', index_cols=None, reset_index=True, copy=False):
+
+    """
+    Description: Calc diffs from previous value of a pandas dataframe
+
+    Parameters
+    ----------
+    df: pandas df
+    diff_cols: list of cols to take the diffs of
+    diff_suffix: str suffix to add the the new diff colname
+    index_cols: if None then just append the dataframe with the new diff cols.
+        If not none then it is efficient to pass index_cols when running in parallel so there are not copies of large dfs being made
+    reset_index: if False then return the df with index_cols as the new index, else reset the index
+    copy: make a copy of the df before applying logic
+
+    Returns
+    -------
+    pandas df
+    """
+
 
     if copy: df = df.copy()
-    df[[i + diff_suffix for i in diff_cols]] = df[diff_cols].diff()
+    if index_cols is None:
+        df[[i + diff_suffix for i in diff_cols]] = df[diff_cols].diff()
+    else:
+        assert len(np.intersect1d(list(index_cols), diff_cols)) == 0, 'index_cols cannot overlap with diff_cols'
+        diff_df = df[list(index_cols) + list(diff_cols)]
+        diff_df.set_index(list(index_cols), inplace=True)
+        df.set_index(list(index_cols), inplace=True)
+        diff_df = diff_df[diff_cols].diff().add_suffix(diff_suffix)
+        df = pd.merge(df, diff_df, left_index=True, right_index=True)
+
+        if reset_index:
+            df.reset_index(inplace=True)
+            if 'index' in df.columns:
+                df.drop('index', axis=1, inplace=True)
+    DataValidator(df).validate_data()
     return df
 
 
-def calc_pct_changes(df, pct_change_cols, pct_change_suffix='_pct_change', copy=True):
+def calc_pct_changes(df, pct_change_cols, pct_change_suffix='_pct_change', epsilon=0.00000000001, index_cols=None, reset_index=True, copy=False):
+    """
+    Description: Calc diffs from previous value of a pandas dataframe
 
+    Parameters
+    ----------
+    df: pandas df
+    pct_change_cols: list of cols to take the pct changes of
+    pct_change_suffix: str suffix to add the the new pct_change colname
+    epsilon: small floating point number in case there is a zero division error
+    index_cols: if None then just append the dataframe with the new diff cols.
+        If not none then it is efficient to pass index_cols when running in parallel so there are not copies of large dfs being made
+    reset_index: if False then return the df with index_cols as the new index, else reset the index
+    copy: make a copy of the df before applying logic
+
+    Returns
+    -------
+    pandas df
+
+    """
     if copy: df = df.copy()
 
-    try:
-        df[[i + pct_change_suffix for i in pct_change_cols]] = df[pct_change_cols].pct_change()
-    except ZeroDivisionError:
-        df[pct_change_cols] = df[pct_change_cols] + 0.00000000001
-        df[[i + pct_change_suffix for i in pct_change_cols]] = df[pct_change_cols].pct_change()
+    if index_cols is None:
+        try:
+            df[[i + pct_change_suffix for i in pct_change_cols]] = df[pct_change_cols].pct_change()
+        except ZeroDivisionError:
+            df[pct_change_cols] = df[pct_change_cols] + epsilon
+            df[[i + pct_change_suffix for i in pct_change_cols]] = df[pct_change_cols].pct_change()
+    else:
+        assert len(np.intersect1d(list(index_cols), pct_change_cols)) == 0, 'index_cols cannot overlap with diff_cols'
+        pct_chg_df = df[list(index_cols) + list(pct_change_cols)]
+        pct_chg_df.set_index(list(index_cols), inplace=True)
+        df.set_index(list(index_cols), inplace=True)
+
+        try:
+            pct_chg_df = pct_chg_df[pct_change_cols].pct_change().add_suffix(pct_change_suffix)
+        except ZeroDivisionError:
+            pct_chg_df = pct_chg_df + epsilon
+            pct_chg_df = pct_chg_df.pct_change().add_suffix(pct_change_suffix)
+
+        df = pd.merge(df, pct_chg_df, left_index=True, right_index=True)
+
+        if reset_index:
+            df.reset_index(inplace=True)
+            if 'index' in df.columns:
+                df.drop('index', axis=1, inplace=True)
+
+    DataValidator(df).validate_data()
     return df
+
 
 class CreateTargets():
 
-    def __init__(self, df, copy=True):
+    def __init__(self, df, copy=False):
         """
         Parameters
         __________
@@ -399,7 +453,9 @@ class CreateTargets():
                            hm_col='high_move_pct',
                            target_suffix='target_HL5'):
 
-        # hm stands for high move, lm stands for low move
+
+        """ note: hm stands for high move, lm stands for low move """
+
         # Strong Buy
         self.df.loc[(self.df[hm_col] >= strong_buy) &
                     (self.df[lm_col] >= (-1) * stop),
@@ -417,6 +473,7 @@ class CreateTargets():
                     (~self.df[target_suffix].isin([0, 4])),
                     target_suffix] = 3
 
+
         # Medium Sell
         self.df.loc[(self.df[lm_col] <= (-1) * med_sell) &
                     (self.df[hm_col] <= stop) &
@@ -425,9 +482,7 @@ class CreateTargets():
 
         # No Trade
         self.df.loc[(~self.df[target_suffix].isin([0, 1, 3, 4])), target_suffix] = 2
-
         return self.df
-
 
     def create_targets_HL3(self,
                            buy,
@@ -437,12 +492,12 @@ class CreateTargets():
                            hm_col='high_move_pct',
                            target_suffix='target_HL3'):
 
-        # hm stands for high move, lm stands for low move
+        """ hm stands for high move, lm stands for low move """
+
         # Buy
         self.df.loc[(self.df[hm_col] >= buy) &
                     (self.df[lm_col] >= (-1) * stop),
                     target_suffix] = 2
-
         # Sell
         self.df.loc[(self.df[lm_col] <= (-1) * sell) &
                     (self.df[hm_col] <= stop) &
@@ -455,7 +510,7 @@ class CreateTargets():
         return self.df
 
 
-def create_lagging_features(df, lagging_map, new_col_prefix='prev', copy=True):
+def create_lagging_features(df, lagging_map, new_col_prefix='prev', copy=False):
 
     """
 
@@ -490,10 +545,14 @@ def create_rolling_features(df,
                             rolling_cols='all_numeric',
                             ewm_cols='all_numeric',
                             join_method='outer',
-                            copy=True):
+                            index_cols=None,
+                            reset_index=True,
+                            copy=False):
     """
+
     Parameters
     __________
+
     df : pandas df
 
     rolling_fn : str called from df.rolling().rolling_fn (e.g. df.rolling.mean() is called with getattr)
@@ -504,9 +563,12 @@ def create_rolling_features(df,
 
     rolling_cols : cols to apply rolling_fn
     ewm_cols : cols to apply ewm_fn
-
     join_method : str 'inner', 'outer', 'left', or 'right' - how to join the dfs
-    copy : bool whether or not to make a copy of the df
+
+    index_cols: None, list, or tuple of cols that are the indices of the df
+
+    reset_index: Bool: if true then reset the index after setting index before joining, else return the index_cols as the index in the df
+    copy : bool whether or not to make a copy of the df before applying logic
 
     """
 
@@ -518,26 +580,49 @@ def create_rolling_features(df,
     if isinstance(rolling_cols, str) and ewm_cols.lower() == 'all_numeric':
         ewm_cols = list(df.select_dtypes(include=np.number).columns)
 
-    # rolling
-    if rolling_fn is not None and len(rolling_cols) > 0:
-        new_rolling_cols = [i + '_rolling_' + rolling_fn for i in rolling_cols]
-        df[new_rolling_cols] = getattr(df[rolling_cols].rolling(**rolling_params), rolling_fn)()
+    if index_cols is None:
+        # rolling
+        if rolling_fn is not None and len(rolling_cols) > 0:
+            new_rolling_cols = [i + '_rolling_' + rolling_fn for i in rolling_cols]
+            df[new_rolling_cols] = getattr(df[rolling_cols].rolling(**rolling_params), rolling_fn)()
 
-    # ewm
-    if ewm_fn is not None and len(ewm_cols) > 0:
-        new_ewm_cols = [i + '_ewm_' + ewm_fn for i in ewm_cols]
-        df[new_ewm_cols] = getattr(df[ewm_cols].ewm(**ewm_params), ewm_fn)()
+        # ewm
+        if ewm_fn is not None and len(ewm_cols) > 0:
+            new_ewm_cols = [i + '_ewm_' + ewm_fn for i in ewm_cols]
+            df[new_ewm_cols] = getattr(df[ewm_cols].ewm(**ewm_params), ewm_fn)()
+
+    else:
+        df.set_index(list(index_cols), inplace=True)
+
+        # rolling
+        if rolling_fn is not None and len(rolling_cols) > 0:
+            new_rolling_cols = [i + '_rolling_' + rolling_fn for i in rolling_cols]
+            rolling_df = getattr(df[rolling_cols].rolling(**rolling_params), rolling_fn)()
+            rolling_df.columns = new_rolling_cols
+            df = pd.merge(df, rolling_df[[i for i in rolling_df.columns if i not in df.columns]], left_index=True, right_index=True)
+        # ewm
+        if ewm_fn is not None and len(ewm_cols) > 0:
+            new_ewm_cols = [i + '_ewm_' + ewm_fn for i in ewm_cols]
+            ewm_df = getattr(df[ewm_cols].ewm(**ewm_params), ewm_fn)()
+            ewm_df.columns = new_ewm_cols
+            df = pd.merge(df, ewm_df[[i for i in ewm_df.columns if i not in df.columns]], left_index=True, right_index=True)
+
+    if reset_index:
+        df.reset_index(inplace=True)
+        if 'index' in df.columns:
+            df.drop('index', axis=1, inplace=True)
+
+    DataValidator(df).validate_data()
 
     return df
 
 
 
-def drop_nas(df, col_contains, exception_cols=None, how=None, copy=True, **dropna_params):
+def drop_nas(df, col_contains, exception_cols=None, how=None, copy=False, **dropna_params):
 
     """
-    Description:
-    ___________
-    The goal of this function is to conditionally drop null rows
+
+    Description: The goal of this function is to conditionally drop rows with a significant amount of NAs
 
     Parameters
     __________
@@ -580,7 +665,7 @@ def drop_nas(df, col_contains, exception_cols=None, how=None, copy=True, **dropn
     return df.dropna(how=how, subset=selected_cols, **dropna_params)
 
 
-def calc_move_iar(df, iar_cols, iar_suffix='_iar', copy=True):
+def calc_move_iar(df, iar_cols, iar_suffix='_iar', copy=False):
 
     if copy: df = df.copy()
 
@@ -591,25 +676,24 @@ def calc_move_iar(df, iar_cols, iar_suffix='_iar', copy=True):
 
     if isinstance(iar_cols, str):
         new_iar_cols = iar_cols + iar_suffix
-
     else:
         new_iar_cols = [i + iar_suffix for i in iar_cols]
 
     df[new_iar_cols] = upmove_iar.fillna(downmove_iar).ffill()
 
+    DataValidator(df).validate_data()
     return df
 
-
-def calc_trend(df, iar_cols, iar_suffix='_iar', trend_suffix='_trend', flat_threshold=0.005, copy=True):
+def calc_trend(df, iar_cols, iar_suffix='_iar', trend_suffix='_trend', flat_threshold=0.005, copy=False):
 
     if copy: df = df.copy()
 
     new_iar_colname = iar_cols + iar_suffix
     trend_colname = iar_cols + trend_suffix
-
     df.loc[df[iar_cols] > 0, trend_colname] = 'up'
     df.loc[df[iar_cols] < 0, trend_colname] = 'down'
     df.loc[np.abs(df[iar_cols]) <= flat_threshold, trend_colname] = 'flat'
+
     return df
 
 def calc_coef(df, target_colname, pred_colname):
@@ -626,13 +710,14 @@ def split_list(lst, n):
     assert isinstance(lst, list) | isinstance(lst, np.ndarray), 'lst is not a list'
     yield [lst[i: i + n] for i in range(0, len(lst), n)]
 
+
 def plot_coef_scores(era_scores,
                      x='date',
                      y='era_score',
                      groupby_cols=None,
                      rolling_period=10,
                      verbose=True,
-                     copy=True,
+                     copy=False,
                      **plotly_params):
 
     if copy: era_scores = era_scores.copy()
@@ -720,8 +805,8 @@ def calculate_fnc(sub, targets, features):
 
     # FNC: Spearman rank-order correlation of neutralized submission to target
     fnc = np.corrcoef(sub.rank(pct=True, method="first"), targets)[0, 1]
-
     return fnc
+
 
 def download_ticker_map(napi,
                         numerai_ticker_link='https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv',
@@ -732,6 +817,7 @@ def download_ticker_map(napi,
     eligible_tickers = pd.Series(napi.ticker_universe(), name=yahoo_ticker_colname)
 
     ticker_map = pd.read_csv(numerai_ticker_link)
+
     ticker_map = ticker_map[ticker_map[main_ticker_col].isin(eligible_tickers)]
 
     if verbose:
@@ -773,5 +859,4 @@ def create_datetime_features(df, datetime_col, include_hour=True, make_copy=Fals
     df.loc[:, 'is_quarter_end'] = df[datetime_col].dt.is_quarter_end
     holidays = calendar().holidays(start=df[datetime_col].min(), end=df[datetime_col].max())
     df.loc[:, 'is_holiday'] = df[datetime_col].isin(holidays)
-
     return df

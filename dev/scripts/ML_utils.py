@@ -62,7 +62,7 @@ import dask.dataframe as dd
 import feather
 
 
-def parallize_pandas_func(df, df_attribute, parallelize_by_col = True, num_workers = mp.cpu_count(), **kwargs):
+def parallize_pandas_func(df, df_attribute, parallelize_by_col=True, num_workers=mp.cpu_count(), **kwargs):
     """ parallelize by row not implemented yet """
     start_pos = 0
     chunk_len = int(np.floor(len(df.columns) / num_workers))
@@ -190,9 +190,9 @@ class PreprocessFeatures(TransformerMixin):
             if numeric_overlap or oh_overlap or hc_overlap:
                 raise('Error - There is an overlap between numeric, oh, and hc features! To ignore this set overwrite_detection to True.')
 
-        total_features = list(set(numeric_features + oh_features + hc_features + list(discarded_features)))
+        all_features = list(set(numeric_features + oh_features + hc_features + list(discarded_features)))
 
-        if any([i not in total_features for i in [i for i in X.columns if not i in self.preserve_vars and not i in [self.target]]]):
+        if len(set(all_features) - set([i for i in X.columns if not i in self.preserve_vars and i not in [self.target]])) > 0:
             raise('Not all features were detected!!')
 
         ds_print('\nnumeric_features:' + str(numeric_features), verbose=self.verbose)
@@ -270,7 +270,7 @@ def get_column_names_from_ColumnTransformer(column_transformer):
 
         try:
             if isinstance(transformer, OneHotEncoder):
-                names = list(transformer.get_feature_names(raw_col_name))
+                names = list(transformer.get_feature_names_out(raw_col_name))
 
             elif isinstance(transformer, SimpleImputer) and transformer.add_indicator:
                 missing_indicator_indices = transformer.indicator_.features_
@@ -279,7 +279,7 @@ def get_column_names_from_ColumnTransformer(column_transformer):
                 names = raw_col_name + missing_indicators
 
             else:
-                names = list(transformer.get_feature_names())
+                names = list(transformer.get_feature_names_out())
 
         except AttributeError as error:
             names = raw_col_name
@@ -381,12 +381,12 @@ class FeatureImportance:
                 # if pipeline, get the last transformer in the Pipeline
                 transformer = transformer.steps[-1][1]
 
-            if hasattr(transformer, 'get_feature_names'):
-                if 'input_features' in transformer.get_feature_names.__code__.co_varnames:
-                    names = list(transformer.get_feature_names(orig_feature_names))
+            if hasattr(transformer, 'get_feature_names_out'):
+                if 'input_features' in transformer.get_feature_names_out.__code__.co_varnames:
+                    names = list(transformer.get_feature_names_out(orig_feature_names))
                 else:
                     try:
-                        names = list(transformer.get_feature_names())
+                        names = list(transformer.get_feature_names_out())
                     except:
                         if self.verbose: print('transformer ' + str(i) + ' is not fitted!')
                         continue
@@ -432,7 +432,7 @@ class FeatureImportance:
 
         assert isinstance(self.pipeline, Pipeline), "Input isn't a Pipeline"
 
-        features = self.get_feature_names()
+        features = self.get_feature_names_out()
 
         if self.verbose: print('\n\n---------\nRunning get_selected_features\n---------\n')
 
