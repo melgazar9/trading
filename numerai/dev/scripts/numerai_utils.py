@@ -244,36 +244,37 @@ class CalcMoves(DataValidator):
             preserve_cols = [open_col, high_col, low_col, close_col, volume_col]
             df.set_index(list(index_cols), inplace=True)
 
-        tmp_frame = df[preserve_cols]
+        tmp_frame = df[preserve_cols].copy()
 
-        tmp_frame['move' + suffix] = tmp_frame[close_col] - tmp_frame[open_col]
-        tmp_frame['move_pct' + suffix] = tmp_frame['move' + suffix] / tmp_frame[open_col]
-        tmp_frame['move_pct_change' + suffix] = tmp_frame['move' + suffix].pct_change()
+        tmp_frame.loc[:, 'move' + suffix] = tmp_frame[close_col] - tmp_frame[open_col]
+        tmp_frame.loc[:, 'move_pct' + suffix] = tmp_frame['move' + suffix] / tmp_frame[open_col]
+        tmp_frame.loc[:, 'move_pct_change' + suffix] = tmp_frame['move' + suffix].pct_change()
 
-        tmp_frame['pct_chg' + suffix] = tmp_frame['move' + suffix] / tmp_frame[close_col].shift()
+        tmp_frame.loc[:, 'pct_chg' + suffix] = tmp_frame['move' + suffix] / tmp_frame[close_col].shift()
 
-        tmp_frame['range' + suffix] = tmp_frame[high_col] - tmp_frame[low_col]
-        tmp_frame['range_pct_change' + suffix] = tmp_frame['range' + suffix].pct_change()
+        tmp_frame.loc[:, 'range' + suffix] = tmp_frame[high_col] - tmp_frame[low_col]
+        tmp_frame.loc[:, 'range_pct_change' + suffix] = tmp_frame['range' + suffix].pct_change()
 
-        tmp_frame['high_move' + suffix] = tmp_frame[high_col] - tmp_frame[open_col]
-        tmp_frame['high_move_pct' + suffix] = tmp_frame['high_move' + suffix] / tmp_frame[open_col]
-        tmp_frame['high_move_pct_change' + suffix] = tmp_frame['high_move' + suffix].pct_change()
+        tmp_frame.loc[:, 'high_move' + suffix] = tmp_frame[high_col] - tmp_frame[open_col]
+        tmp_frame.loc[:, 'high_move_pct' + suffix] = tmp_frame['high_move' + suffix] / tmp_frame[open_col]
+        tmp_frame.loc[:, 'high_move_pct_change' + suffix] = tmp_frame['high_move' + suffix].pct_change()
 
-        tmp_frame['low_move' + suffix] = tmp_frame[low_col] - tmp_frame[open_col]
-        tmp_frame['low_move_pct' + suffix] = tmp_frame['low_move' + suffix] / tmp_frame[open_col]
-        tmp_frame['low_move_pct_change' + suffix] = tmp_frame['low_move' + suffix].pct_change()
-        tmp_frame['volume_pct_change' + suffix] = tmp_frame[volume_col].pct_change()
+        tmp_frame.loc[:, 'low_move' + suffix] = tmp_frame[low_col] - tmp_frame[open_col]
+        tmp_frame.loc[:, 'low_move_pct' + suffix] = tmp_frame['low_move' + suffix] / tmp_frame[open_col]
+        tmp_frame.loc[:, 'low_move_pct_change' + suffix] = tmp_frame['low_move' + suffix].pct_change()
+        tmp_frame.loc[:, 'volume_pct_change' + suffix] = tmp_frame[volume_col].pct_change()
 
-        tmp_frame['low_minus_close' + suffix] = tmp_frame[low_col] - tmp_frame[close_col]
-        tmp_frame['high_minus_close' + suffix] = tmp_frame[high_col] - tmp_frame[close_col]
-        tmp_frame['low_minus_prev_close' + suffix] = tmp_frame[low_col] - tmp_frame[close_col].shift()
-        tmp_frame['high_minus_prev_close' + suffix] = tmp_frame[high_col] - tmp_frame[close_col].shift()
+        tmp_frame.loc[:, 'low_minus_close' + suffix] = tmp_frame[low_col] - tmp_frame[close_col]
+        tmp_frame.loc[:, 'high_minus_close' + suffix] = tmp_frame[high_col] - tmp_frame[close_col]
+        tmp_frame.loc[:, 'low_minus_prev_close' + suffix] = tmp_frame[low_col] - tmp_frame[close_col].shift()
+        tmp_frame.loc[:, 'high_minus_prev_close' + suffix] = tmp_frame[high_col] - tmp_frame[close_col].shift()
 
         if index_cols is None:
             df = pd.concat([df, tmp_frame[[i for i in tmp_frame.columns if i not in preserve_cols]]], axis=1)
         else:
             df = pd.merge(df, tmp_frame[[i for i in tmp_frame.columns if i not in preserve_cols]], left_index=True, right_index=True)
 
+        del tmp_frame
         if reset_index:
             df.reset_index(inplace=True)
             if 'index' in df.columns:
@@ -283,6 +284,7 @@ class CalcMoves(DataValidator):
         self.validate_data()
 
         return df
+
 
     def compute_multi_basic_moves(self, df, basic_move_params, num_workers=1, dask_join_cols=None, reset_index=True):
 
