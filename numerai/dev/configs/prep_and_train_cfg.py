@@ -4,7 +4,7 @@ from numerai.dev.configs.prep_and_train_cfg import *
 
 ### general params ###
 
-NUM_WORKERS = 32
+NUM_WORKERS = 1
 SPLIT_COLNAME = 'dataset_split'
 TARGET_COL = 'target_20d'
 PRESERVE_VARS = ['friday_date', 'date_localized', 'data_type', 'dataset_split']
@@ -94,16 +94,16 @@ LAGGING_FEATURES_PARAMS = {
 
 """ rolling_features params """
 
-# ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},
-#                            'rolling_fn': 'mean',
-#                            'ewm_fn': 'mean',
-#                            'ewm_params': {'com':.5},
-#                            'rolling_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target_20d', 'prev1_target_HL5', 'prev2_target_20d'],
-#                            'ewm_cols': ['open_1d', 'high_1d', 'low_1d', 'adj_close_1d', 'volume_1d', 'prev1_target_20d', 'prev1_target_HL5'],
-#                            'join_method': 'outer',
-#                            # 'groupby_cols': TICKER_COL,
-#                            'copy': False
-#                            }
+DROP_INIT_ROLLING_WINDOW_ROWS = True
+
+ROLLING_FEATURES_PARAMS = {'rolling_params' : {'window': 30},
+                           'rolling_fn': 'mean',
+                           'ewm_fn': 'mean',
+                           'ewm_params': {'com': .5},
+                           'join_method': 'outer',
+                           'index_cols': [DATE_COL, TICKER_COL],
+                           'copy': False
+                           }
 
 DIFF_COLS_TO_SELECT_STRING = "[i for i in df_numerai.columns if i not in [DATE_COL, TICKER_COL, TARGET_COL] and not ('dat' in i.lower() or 'target' in i.lower() or 'ticker' in i.lower())]"
 PCT_CHG_COLS_TO_SELECT_STRING = "[i for i in df_numerai.columns if i not in [DATE_COL, TICKER_COL, TARGET_COL] and not ('dat' in i.lower() or 'target' in i.lower() or 'ticker' in i.lower())]"
@@ -148,27 +148,29 @@ FE_pipeline = {
     'numeric_pipe': make_pipeline(
                         FunctionTransformer(lambda df: df.replace([np.inf, -np.inf], np.nan)),
                         # Winsorizer(capping_method='gaussian', tail='both', fold=3, missing_values='ignore')
-                        MinMaxScaler()
-                        # SimpleImputer(strategy='median', add_indicator=True)
+                        # StandardScaler()
+                        SimpleImputer(strategy='median', add_indicator=True)
                         ),
 
      'hc_pipe': make_pipeline(
                          FunctionTransformer(lambda x: x.astype(str)),
                          SimpleImputer(strategy='constant'),
-                         TargetEncoder(return_df = True,
-                                       handle_missing = 'value',
-                                       handle_unknown = 'value',
-                                       min_samples_leaf = 10)
+                         TargetEncoder(return_df=True,
+                                       handle_missing='value',
+                                       handle_unknown='value',
+                                       min_samples_leaf=10)
                         ),
 
      'oh_pipe': make_pipeline(
          FunctionTransformer(lambda x: x.astype(str)),
          SimpleImputer(strategy='constant'),
-         OneHotEncoder(handle_unknown='ignore')
-     )
+         OneHotEncoder(drop='if_binary', sparse=False, handle_unknown='ignore')
+     ),
+
+     'custom_pipeline': {Pipeline(steps=[('ordinal_encoder', OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1))]): [TICKER_COL]}
     }
 
-PREPROCESS_FEATURES_PARAMS = {'target': TARGET_COL, 'FE_pipeline_dict': FE_pipeline, 'max_oh_cardinality': 10, 'n_jobs': 1}
+PREPROCESS_FEATURES_PARAMS = {'target': TARGET_COL, 'FE_pipeline_dict': FE_pipeline, 'max_oh_cardinality': 10, 'n_jobs': 16, 'copy': False}
 
 """ move_iar params """
 
@@ -218,5 +220,6 @@ RUN_MODEL_PARAMS = {
     'bypass_all_numeric': False,
     'map_predictions_to_df_full': True,
     'predict_proba': False,
-    'use_eval_set_when_possible': True
+    'use_eval_set_when_possible': True,
+    'fit_params': {'early_stopping': 5}
 }

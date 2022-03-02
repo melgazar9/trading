@@ -27,7 +27,7 @@ os.environ['NUMEXPR_NUM_THREADS'] = '16'
 
 start_time = time.time()
 
-pd.set_option('display.float_format', lambda x: '%.5f' % x)
+pd.set_option('display.float_format', lambda x: '%.5f' % x, 'display.max_columns', 7)
 
 config = ConfigParser()
 config.read('numerai/numerai_keys.ini')
@@ -90,20 +90,18 @@ basic_move_params = merge_dicts(
     }
 )
 
-# df_numerai = df_numerai.tail(100000) # for debugging
+df_numerai = df_numerai.tail(100000) # for debugging
 
 
 FEATURE_MANIPULATOR_PIPE = Pipeline(
     steps=[
-
         ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),\
-
         ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET_COL, 'yahoo_ticker'], how='any'))),\
-
         ('dropna_features', FunctionTransformer(lambda df: df.dropna(axis=1, how='all'))),
 
         ('calc_moves', FunctionTransformer(
-            lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(lambda x: CalcMoves(copy=False).compute_multi_basic_moves(x,
+            lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
+                lambda x: CalcMoves(copy=False).compute_multi_basic_moves(x,
                 basic_move_params={k:v for k,v in basic_move_params.items() if all(col in df.columns for col in list(basic_move_params[k].values())[0:-1])},
                 dask_join_cols=[DATE_COL, TICKER_COL])))),
 
@@ -113,7 +111,8 @@ FEATURE_MANIPULATOR_PIPE = Pipeline(
                                  index_cols=[DATE_COL, TICKER_COL])))),
 
         ('calc_pct_chgs', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
-            lambda df: calc_pct_changes(df, pct_change_cols=np.intersect1d(df.columns, [i for i in eval(PCT_CHG_COLS_TO_SELECT_STRING) if i in df.columns]),
+            lambda df: calc_pct_changes(df,
+                                        pct_change_cols=np.intersect1d(df.columns, [i for i in eval(PCT_CHG_COLS_TO_SELECT_STRING) if i in df.columns]),
                                         index_cols=[DATE_COL, TICKER_COL])))),
 
         ('calc_move_iar', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
@@ -121,50 +120,48 @@ FEATURE_MANIPULATOR_PIPE = Pipeline(
 
         # when calling rolling features below, it is difficult to parameterize this as part of the config because the above lagging features
         # pipeline creates features that we want to take rolling features for, which are not columns in the original df
-
         ('rolling_features', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
             lambda x: create_rolling_features(x,
-                                              rolling_params = {'window': 30},
-                                              rolling_fn='mean',
-                                              ewm_fn='mean',
-                                              ewm_params={'com':.5},
+                                              **ROLLING_FEATURES_PARAMS,
                                               rolling_cols=[i for i in x.columns if 'move' in i],
-                                              ewm_cols=[i for i in x.columns if 'move' in i],
-                                              join_method='outer',
-                                              index_cols=[DATE_COL, TICKER_COL],
-                                              copy=False)
+                                              ewm_cols=[i for i in x.columns if 'move' in i])
         ))),
 
-        ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
-            lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))
+        # ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
+        #     lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))
 
         # ('conditional_feature_dropna', FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS))),\
+
         # ('sort_df', FunctionTransformer(lambda df: df.sort_values(by=[DATE_COL, TICKER_COL]))) # has to be outside of the pipeline
-        ]\
+        ]
     )
 
 use_memory_fs = False if platform.system() == 'Windows' else True # pandarallel fails on windows in pycharm with use_memory_fs set to the default True
 pandarallel.initialize(nb_workers=NUM_WORKERS, use_memory_fs=use_memory_fs)
 
+df_numerai_raw = df_numerai.copy()
 FEATURE_MANIPULATOR_PIPE.steps = list(dict(FEATURE_MANIPULATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
 feature_creator = FEATURE_MANIPULATOR_PIPE.fit(df_numerai)
-df_numerai_transformed = feature_creator.transform(df_numerai)
-df_numerai_transformed = pd.read_feather('~/tmp.feather')
+df_numerai = feature_creator.transform(df_numerai)
+
+gc.collect()
+
+if DROP_INIT_ROLLING_WINDOW_ROWS:
+    df_numerai = df_numerai[df_numerai[DATE_COL] >= df_numerai[DATE_COL].min() + datetime.timedelta(ROLLING_FEATURES_PARAMS['rolling_params']['window'])]
 
 
 ### Timeseries Split ###
 
-TIMESERIES_SPLIT_PARAMS['copy'] = False
-timeseries_split(df_numerai, **TIMESERIES_SPLIT_PARAMS)
+df_numerai = df_numerai.groupby([TICKER_COL]).apply(lambda df: timeseries_split(df, **TIMESERIES_SPLIT_PARAMS))
 
 input_features = eval(INPUT_FEATURES_STRING)
 preserve_vars = list(set(PRESERVE_VARS + eval(PRESERVE_VARS_STRING)))
-
 drop_vars = eval(DROP_VARS_STRING)
 
 X_train, y_train = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][TARGET_COL]
 X_val, y_val = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][TARGET_COL]
 X_test, y_test = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][TARGET_COL]
+
 gc.collect()
 
 
@@ -181,8 +178,9 @@ X_train_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X
 X_val_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_val), columns=final_features))
 X_test_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_test), columns=final_features))
 X_transformed = clean_columns(pd.concat([X_train_transformed, X_val_transformed, X_test_transformed]))
-
 final_features = X_train_transformed.columns
+
+gc.collect()
 
 ### Train model ###
 
@@ -195,6 +193,8 @@ model_obj = RunModel(X_test=X_transformed,
                      df_full=df_numerai,
                      **RUN_MODEL_PARAMS).train_and_predict()
 
+model_obj['df_numerai_raw'] = df_numerai_raw
+del df_numerai_raw
 
 model_obj['feature_creator'] = feature_creator
 del feature_creator
@@ -206,7 +206,7 @@ model_obj['input_features'] = input_features
 model_obj['final_features'] = final_features
 model_obj['final_dtype_mapping'] = model_obj['df_pred'].dtypes.to_dict()
 model_obj['dropped_features'] = drop_vars
-
+gc.collect()
 
 if SAVE_OBJECT:
     save_start_time = time.time()

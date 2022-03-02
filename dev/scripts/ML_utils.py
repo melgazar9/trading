@@ -33,7 +33,7 @@ from sklearn.impute import MissingIndicator, SimpleImputer
 from sklearn.compose import ColumnTransformer, make_column_selector, make_column_transformer
 from category_encoders import TargetEncoder
 from sklearn.impute import MissingIndicator
-from sklearn.preprocessing import FunctionTransformer
+from sklearn.preprocessing import FunctionTransformer, OrdinalEncoder, LabelEncoder
 from sklearn.base import TransformerMixin
 from feature_engine.outliers import Winsorizer, ArbitraryOutlierCapper#, OutlierTrimmer
 from imblearn.over_sampling import SMOTE, ADASYN, RandomOverSampler, KMeansSMOTE, SMOTENC, SVMSMOTE, BorderlineSMOTE
@@ -101,7 +101,7 @@ class PreprocessFeatures(TransformerMixin):
 
         max_oh_cardinality : A natural number - one-hot encode all features with unique categories <= to this value
 
-        FE_pipeline_dict : Set to None to use "standard" feature engineering pipeline. Otherwise, supply a dictionary of pipelines to hc_pipe, oh_pipe, and numeric_pipe
+        FE_pipeline_dict : Set to None to use "standard" feature engineering pipeline. Otherwise, supply a dictionary of pipelines to hc_pipe, oh_pipe, numeric_pipe, and custom_pipe
 
         n_jobs : An int - the number of threads to use
 
@@ -128,9 +128,20 @@ class PreprocessFeatures(TransformerMixin):
         -------
     """
 
-    def __init__(self, preserve_vars, target, FE_pipeline_dict=None, remainder='drop', max_oh_cardinality=11,
-                 detect_dtypes=True, numeric_features=[], oh_features=[], hc_features=[],
-                 overwrite_detection=True, n_jobs=-1, copy=True):
+    def __init__(self,
+                 preserve_vars,
+                 target,
+                 FE_pipeline_dict=None,
+                 remainder='drop',
+                 max_oh_cardinality=11,
+                 detect_dtypes=True,
+                 numeric_features=None,
+                 oh_features=None,
+                 hc_features=None,
+                 overwrite_detection=True,
+                 n_jobs=-1,
+                 copy=True,
+                 verbose=True):
 
         self.preserve_vars = preserve_vars
         self.target = target
@@ -138,13 +149,14 @@ class PreprocessFeatures(TransformerMixin):
         self.remainder = remainder
         self.max_oh_cardinality = max_oh_cardinality
         self.detect_dtypes = detect_dtypes
-        self.numeric_features = numeric_features
-        self.oh_features = oh_features
-        self.hc_features = hc_features
+        self.numeric_features = [] if numeric_features is None else numeric_features
+        self.oh_features = [] if oh_features is None else oh_features
+        self.hc_features = [] if hc_features is None else hc_features
         self.overwrite_detection = overwrite_detection
         self.n_jobs = n_jobs
-        self.verbose = True
+        self.verbose = verbose
         self.copy = copy
+
 
     def detect_feature_types(self, X):
 
@@ -154,24 +166,30 @@ class PreprocessFeatures(TransformerMixin):
             ds_print('Not detecting dtypes.', verbose=self.verbose)
             feature_dict = {'numeric_features': self.numeric_features,
                             'oh_features': self.oh_features,
-                            'hc_features': self.hc_features}
+                            'hc_features': self.hc_features,
+                            'custom_features': self.FE_pipeline_dict['custom_pipeline'].values()}
             return feature_dict
 
+        if 'custom_pipeline' in self.FE_pipeline_dict.keys():
+            custom_features = list(itertools.chain(*self.FE_pipeline_dict['custom_pipeline'].values()))
+        else:
+            custom_features = []
 
-        detected_numeric_vars = make_column_selector(dtype_include=np.number)(X[[i for i in X.columns if i not in self.preserve_vars + [self.target]]])
+        assert len(np.intersect1d(list(set(self.numeric_features + self.oh_features + self.hc_features + custom_features)), self.preserve_vars)) == 0,\
+            'There are duplicate features in preserve_vars either the input numeric_features, oh_features, or hc_features'
 
-        detected_oh_vars = [i for i in X.loc[:, (X.nunique() < self.max_oh_cardinality) & (X.nunique() > 1)].columns if i not in self.preserve_vars + [self.target]]
-
-        detected_hc_vars = X[[i for i in X.columns if i not in self.preserve_vars]]\
+        detected_numeric_vars = make_column_selector(dtype_include=np.number)(X[[i for i in X.columns if i not in self.preserve_vars + [self.target] + custom_features]])
+        detected_oh_vars = [i for i in X.loc[:, (X.nunique() < self.max_oh_cardinality) & (X.nunique() > 1)].columns if i not in self.preserve_vars + [self.target] + custom_features]
+        detected_hc_vars = X[[i for i in X.columns if i not in self.preserve_vars + custom_features]]\
                             .select_dtypes(['object', 'category'])\
                             .apply(lambda col: col.nunique())\
                             .loc[lambda x: x > self.max_oh_cardinality]\
                             .index.tolist()
 
-        discarded_features = X.isnull().sum()[X.isnull().sum() == X.shape[0]].index
-        numeric_features = list(set([i for i in self.numeric_features + [i for i in detected_numeric_vars if i not in self.oh_features and i not in self.hc_features and i not in discarded_features]]))
-        oh_features = list(set([i for i in self.oh_features  + [i for i in detected_oh_vars if i not in self.numeric_features and i not in self.hc_features and i not in discarded_features]]))
-        hc_features = list(set([i for i in self.hc_features + [i for i in detected_hc_vars if i not in self.numeric_features and i not in self.oh_features and i not in discarded_features]]))
+        discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index if i not in self.preserve_vars]
+        numeric_features = list(set([i for i in self.numeric_features + [i for i in detected_numeric_vars if i not in list(self.oh_features) + list(self.hc_features) + list(discarded_features) + custom_features]]))
+        oh_features = list(set([i for i in self.oh_features  + [i for i in detected_oh_vars if i not in list(self.numeric_features) + list(self.hc_features) + list(discarded_features) + custom_features]]))
+        hc_features = list(set([i for i in self.hc_features + [i for i in detected_hc_vars if i not in list(self.numeric_features) + list(self.oh_features) + list(discarded_features) + custom_features]]))
 
         ds_print('Overlap between numeric and oh_features: ' + str(list(set(np.intersect1d(numeric_features, oh_features)))), verbose=self.verbose)
         ds_print('Overlap between numeric and hc_features: ' + str(list(set(np.intersect1d(numeric_features, hc_features)))), verbose=self.verbose)
@@ -179,35 +197,40 @@ class PreprocessFeatures(TransformerMixin):
         ds_print('Overlap between oh_features and hc_features will be moved to oh_features', verbose=self.verbose)
 
         if self.overwrite_detection:
-            numeric_features = [i for i in numeric_features if i not in oh_features and i not in hc_features and i not in discarded_features]
-            oh_features = [i for i in oh_features if i not in hc_features and i not in numeric_features and i not in discarded_features]
-            hc_features = [i for i in hc_features if i not in oh_features and i not in numeric_features and i not in discarded_features]
+            numeric_features = [i for i in numeric_features if i not in oh_features + hc_features + discarded_features + custom_features]
+            oh_features = [i for i in oh_features if i not in hc_features + numeric_features + discarded_features + custom_features]
+            hc_features = [i for i in hc_features if i not in oh_features + numeric_features + discarded_features + custom_features]
         else:
-            numeric_overlap = [i for i in numeric_features if i in oh_features or i in hc_features and i not in discarded_features]
-            oh_overlap = [i for i in oh_features if i in hc_features or i in numeric_features and i not in discarded_features]
-            hc_overlap = [i for i in hc_features if i in oh_features or i in numeric_features and i not in discarded_features]
+            numeric_overlap = [i for i in numeric_features if i in oh_features or i in hc_features and i not in discarded_features + custom_features]
+            oh_overlap = [i for i in oh_features if i in hc_features or i in numeric_features and i not in discarded_features + custom_features]
+            hc_overlap = [i for i in hc_features if i in oh_features or i in numeric_features and i not in discarded_features + custom_features]
 
             if numeric_overlap or oh_overlap or hc_overlap:
                 raise('Error - There is an overlap between numeric, oh, and hc features! To ignore this set overwrite_detection to True.')
 
-        all_features = list(set(numeric_features + oh_features + hc_features + list(discarded_features)))
+        all_features = list(set(numeric_features + oh_features + hc_features + discarded_features + custom_features))
+        all_features_debug = set(all_features) - set([i for i in X.columns if i not in self.preserve_vars + [self.target]])
 
-        if len(set(all_features) - set([i for i in X.columns if not i in self.preserve_vars and i not in [self.target]])) > 0:
-            raise('Not all features were detected!!')
+        if len(all_features_debug) > 0:
+            print('\n{}\n'.format(all_features_debug))
+            raise('There was a problem detecting all features!! Check if there is an overlap between preserve_vars and other custom input features')
 
         ds_print('\nnumeric_features:' + str(numeric_features), verbose=self.verbose)
         ds_print('\noh_features:' + str(oh_features), verbose=self.verbose)
         ds_print('\nhc_features:' + str(hc_features), verbose=self.verbose)
         ds_print('\ndiscarded_features:' + str(discarded_features), verbose=self.verbose)
+        ds_print('\ncustom_pipeline:' + str(custom_features), verbose=self.verbose)
 
         feature_dict = {'numeric_features' : numeric_features,
                         'oh_features' : oh_features,
                         'hc_features' : hc_features,
+                        'custom_features': custom_features,
                         'discarded_features': discarded_features
                         }
+
         return feature_dict
 
-    def fit(self, X, y, remainder = 'drop', sparse_threshold = 0):
+    def fit(self, X, y, remainder='drop', sparse_threshold=0):
 
         if self.copy: X, y = X.copy(), y.copy()
 
@@ -218,7 +241,7 @@ class PreprocessFeatures(TransformerMixin):
             # Default below
             numeric_pipe = make_pipeline(
                 # Winsorizer(distribution='gaussian', tail='both', fold=3, missing_values = 'ignore'),
-                MinMaxScaler(feature_range = (0,1)),
+                MinMaxScaler(feature_range=(0,1)),
                 SimpleImputer(strategy='median', add_indicator=True)
             )
 
@@ -239,17 +262,28 @@ class PreprocessFeatures(TransformerMixin):
             hc_pipe = self.FE_pipeline_dict['hc_pipe']
             numeric_pipe = self.FE_pipeline_dict['numeric_pipe']
             oh_pipe = self.FE_pipeline_dict['oh_pipe']
+            custom_pipe = self.FE_pipeline_dict['custom_pipeline']
+
+        transformers = [
+            ('hc_pipeline', hc_pipe, feature_types['hc_features']),
+            ('numeric_pipeline', numeric_pipe, feature_types['numeric_features']),
+            ('oh_encoder', oh_pipe, feature_types['oh_features'])
+        ]
+
+        if custom_pipe:
+            i=0
+            for cp in custom_pipe.keys():
+                transformers.append(('custom_pipe{}'.format(str(i)), cp, custom_pipe[cp]))
+                i += 1
 
         feature_transformer = ColumnTransformer(
-            transformers=[
-                ('hc_pipeline', hc_pipe, feature_types['hc_features']),
-                ('numeric_pipeline', numeric_pipe, feature_types['numeric_features']),
-                ('oh_encoder', oh_pipe, feature_types['oh_features'])
-            ],
+            transformers=transformers,
             remainder=remainder,
-            n_jobs=self.n_jobs).fit(X, y)
+            n_jobs=self.n_jobs)
 
+        feature_transformer.fit(X, y)
         setattr(feature_transformer, 'feature_types', feature_types) # set an attribute for feature types
+
         return feature_transformer
 
 
@@ -672,20 +706,20 @@ class RunModel():
 
     def __init__(self,
                  features,
-                 X_test = None,
-                 X_train = None,
-                 y_train = None,
-                 algorithm = None,
-                 eval_set = None,
-                 copy = True,
-                 prediction_colname = 'prediction',
-                 seed = 100,
-                 convert_float32 = True,
-                 bypass_all_numeric = False,
-                 df_full = None,
-                 map_predictions_to_df_full = True,
-                 predict_proba = False,
-                 use_eval_set_when_possible = True,
+                 X_test=None,
+                 X_train=None,
+                 y_train=None,
+                 algorithm=None,
+                 eval_set=None,
+                 copy=True,
+                 prediction_colname='prediction',
+                 seed=100,
+                 convert_float32=True,
+                 bypass_all_numeric=False,
+                 df_full=None,
+                 map_predictions_to_df_full=True,
+                 predict_proba=False,
+                 use_eval_set_when_possible=True,
                  **kwargs):
 
         self.features = features
@@ -761,6 +795,12 @@ class RunModel():
                 model = self.algorithm.fit(self.X_train, self.y_train, eval_set = self.eval_set, **self.kwargs['fit_params'])
             else:
                 model = self.algorithm.fit(self.X_train, self.y_train, **self.kwargs['fit_params'])
+
+        elif self.use_eval_set_when_possible and self.eval_set is not None and \
+                {'eval_set'}.issubset(list(inspect.signature(XGBRegressor.fit).parameters)):
+
+            ds_print('\nUsing a validation set for ' + type(self.algorithm).__name__ + '...\n')
+            model = self.algorithm.fit(self.X_train, self.y_train, eval_set=self.eval_set)
 
         else:
             ds_print('\nNot using an eval_set for ' + type(self.algorithm).__name__ + '...\n')
@@ -860,12 +900,15 @@ class Resampler():
         return df_resampled
 
 def timeseries_split(df,
-                     train_prop=.7,
-                     val_prop=.15,
+                     datetime_col='date',
+                     split_by_datetime_col=True,
+                     train_prop=0.7,
+                     val_prop=0.15,
                      target_name='target',
                      return_single_df=True,
                      split_colname='dataset_split',
                      sort_df_params={},
+                     reset_datetime_index=True,
                      copy=True):
 
     """
@@ -875,17 +918,17 @@ def timeseries_split(df,
     Parameters
     ----------
     df: a pandas (compatible) dataframe
+    datetime_col: str date column to run the timeseries split on
     train_prop: float - proportion of train orders assuming the data is sorted in ascending order
         example: 0.7 means 70% of the df will train orders
     val_prop: float - proportion of val orders
         e.g. 0.1 means 10% of the df will be val orders, where the val orders come after the train orders
-    feature_prefixes: str or list - the feature name starts with this string to be considered a feature
     target_name: str - name of the target variable
     return_single_df: If true then a new column <split_colname> will be concatenated to the df with 'train', 'val', or 'test'
     split_colname: If return_single_df is True, then this is the name of the new split col
     sort_df_params: Set to False or empty dict to not sort the df by any column.
         To sort, specify as dict the input params to either df.sort_index or df.sort_values.
-
+    reset_datetime_index: Bool to reset the datetime index if splitting by datetime_col
 
     Returns
     -------
@@ -903,20 +946,42 @@ def timeseries_split(df,
     nrows = len(df)
 
     if sort_df_params:
-        if list(sort_df_params.keys())[0].lower() == 'index' and not 'index' in df.columns:
+        if list(sort_df_params.keys())[0].lower() == 'index' and 'index' not in df.columns:
             df.sort_index(**sort_df_params)
         else:
             df.sort_values(**sort_df_params)
 
+    elif datetime_col in df.columns:
+        df.set_index(datetime_col, inplace=True)
+        if reset_datetime_index:
+            df.reset_index(datetime_col, inplace=True)
+
+    if 'index' in df.columns:
+        df.drop('index', axis=1, inplace=True)
+
     if return_single_df:
 
-        df.loc[0:int(np.floor(nrows*train_prop)), split_colname] = 'train'
-        df.loc[int(np.floor(nrows*train_prop)): int(np.floor(nrows*(1 - val_prop))), split_colname] = 'val'
-        df.loc[int(np.floor(nrows*(1 - val_prop))):, split_colname] = 'test'
+        if split_by_datetime_col:
+            # max_train_date = df.iloc[0:int(np.floor(nrows*train_prop))][datetime_col].max()
+            # max_val_date = df.iloc[int(np.floor(nrows*train_prop)): int(np.floor(nrows*(1 - val_prop)))][datetime_col].max()
+
+            dates = np.unique(df['date'].sort_values())
+            max_train_date = dates[int(len(dates) * train_prop)]
+            max_val_date = dates[int(len(dates) * (1 - val_prop))]
+
+            df.loc[df[datetime_col] < max_train_date, split_colname] = 'train'
+            df.loc[(df[datetime_col] >= max_train_date) & (df[datetime_col] < max_val_date), split_colname] = 'val'
+            df.loc[df[datetime_col] >= max_val_date, split_colname] = 'test'
+
+        else:
+            df.loc[0:int(np.floor(nrows*train_prop)), split_colname] = 'train'
+            df.loc[int(np.floor(nrows*train_prop)): int(np.floor(nrows*(1 - val_prop))), split_colname] = 'val'
+            df.loc[int(np.floor(nrows*(1 - val_prop))):, split_colname] = 'test'
 
         return df
 
     else:
+
         X_train = df.iloc[0:int(np.floor(nrows*train_prop))][feature_list]
         y_train = df.iloc[0:int(np.floor(nrows*train_prop))][target_name]
 

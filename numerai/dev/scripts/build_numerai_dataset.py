@@ -9,8 +9,6 @@ from IPython.display import display
 from datetime import datetime
 import time
 import numerapi
-import vaex as vx
-
 
 start_time = time.time()
 
@@ -51,7 +49,6 @@ if DOWNLOAD_YAHOO_DATA:
     if VERBOSE: print('****** Downloading yfinance data ******')
 
     # DOWNLOAD_YFINANCE_DATA_PARAMS['tickers'] = ['FB', 'AMZN', 'AAPL', 'TSLA', 'MSFT', 'NVDA'] # for debugging
-
     if 'tickers' not in DOWNLOAD_YFINANCE_DATA_PARAMS.keys():
         DOWNLOAD_YFINANCE_DATA_PARAMS['tickers'] = ticker_map['yahoo'].tolist() # all valid yahoo finance tickers
 
@@ -71,7 +68,6 @@ else:
 if DOWNLOAD_YAHOO_DATA and INIT_SAVE_FILEPATH is not None and (INIT_SAVE_FILEPATH.lower().endswith('pkl') or INIT_SAVE_FILEPATH.lower().endswith('pickle')):
     dill.dump(dfs, open(INIT_SAVE_FILEPATH, 'wb'))
 
-
 if ('dfs' in locals()):
 
     ### join the dfs in the dfs dictionary ###
@@ -85,8 +81,8 @@ if ('dfs' in locals()):
     index_flatten_col = DATETIME_COL + '_localized' if FLATTEN_GRANULAR_DATA_PARAMS['flatten_localized'] else DATETIME_COL
     dfs['1d'][index_flatten_col] = pd.to_datetime(dfs['1d'][index_flatten_col], utc=True)\
                                      .dt.tz_convert(inspect.signature(download_yfinance_data)\
-                                                           .parameters['tz_localize_location']\
-                                                           .default)
+                                                    .parameters['tz_localize_location']\
+                                                    .default)
 
     if FLATTEN_GRANULAR_DATA_PARAMS:
         for i in FLATTEN_GRANULAR_DATA_PARAMS['timeseries_to_flatten']:
@@ -102,6 +98,7 @@ if ('dfs' in locals()):
                                                    .default).dt.hour],
                                         aggfunc=FLATTEN_GRANULAR_DATA_PARAMS['aggfunc'],
                                         values=[i for i in dfs[i].columns if not i in [index_flatten_col, YAHOO_TICKER_COL]])
+
             dfs[i].columns = list(pd.Index([str(e[0]).lower() + '_' + str(e[1]).lower() for e in dfs[i].columns.tolist()]).str.replace(' ', '_'))
             dfs[i].reset_index(inplace=True)
 
@@ -119,7 +116,6 @@ if ('dfs' in locals()):
 gc.collect()
 
 if VERBOSE: print(df_yahoo.info())
-
 gc.collect()
 
 if APPEND_OLD_DATA:
@@ -135,6 +131,7 @@ if APPEND_OLD_DATA:
     cols_to_backfill = np.intersect1d(df_yahoo.columns, [i for i in df_numerai_old.columns if '1h' in i]) # backfill the new yahoo download with the old 1hr granular data
     df_yahoo[cols_to_backfill] = df_yahoo[cols_to_backfill].fillna(df_numerai_old[cols_to_backfill])
     df_yahoo.reset_index(drop=True, inplace=True)
+
     del df_numerai_old
     gc.collect()
 
@@ -144,11 +141,11 @@ if APPEND_OLD_DATA:
 datetime_ticker_cat_init = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[YAHOO_TICKER_COL].astype(str)).tolist()
 if VERBOSE: print('datetime_ticker_cat before: ' + str(len(datetime_ticker_cat_init)))
 
+groupby_params = {'observed': True}
 if GROUPBY_TICKER_DATE_AFTER_DOWNLOAD and len(datetime_ticker_cat_init) != len(set(datetime_ticker_cat_init)):
 
     gc.collect()
 
-    groupby_params = {'observed': True}
     if N_GROUPBY_CHUNKS > 1:
 
         # since the above two approaches kill the memory, I will chunk the groupby into yahoo_ticker groups
@@ -164,11 +161,11 @@ if GROUPBY_TICKER_DATE_AFTER_DOWNLOAD and len(datetime_ticker_cat_init) != len(s
 
         df_yahoo = pd.concat(list_of_dfs, axis=0)
         del list_of_dfs
-    else:
 
+    else:
         df_yahoo = df_yahoo.groupby(by=[DATETIME_COL, YAHOO_TICKER_COL], **groupby_params).first().reset_index()
 
-datetime_ticker_cat_init
+del datetime_ticker_cat_init
 
 ### create bloomberg ticker ###
 
@@ -176,6 +173,7 @@ if CREATE_BLOOMBERG_TICKER_FROM_YAHOO or DOWNLOAD_YAHOO_DATA:
     if 'ticker' in df_yahoo.columns:
         df_yahoo.rename(columns={'ticker': YAHOO_TICKER_COL}, inplace=True)
     df_yahoo.loc[:, 'bloomberg_ticker'] = df_yahoo[YAHOO_TICKER_COL].map(dict(zip(ticker_map['yahoo'], ticker_map['bloomberg_ticker'])))
+
 
 
 ### ensure no [DATETIME_COL, TICKER_COL] are duplicated ###
@@ -189,7 +187,9 @@ if DROP_NULL_TICKERS: df_yahoo.dropna(subset=[TICKER_COL], inplace=True)
 datetime_ticker_cat_after = (df_yahoo[DATETIME_COL].astype(str) + ' ' + df_yahoo[TICKER_COL].astype(str)).tolist()
 assert len(datetime_ticker_cat_after) == len(set(datetime_ticker_cat_after)), 'TICKER_COL and DATETIME_COL do not make a unique index!'
 del datetime_ticker_cat_after
+
 gc.collect()
+
 if VERBOSE: print('\nreading targets...\n')
 
 targets = pd.read_csv(NUMERAI_TARGETS_URL).assign(date=lambda df: pd.to_datetime(df['friday_date'], format='%Y%m%d'))
@@ -209,7 +209,8 @@ if VERBOSE:
 if VERBOSE: print('\nmerging numerai target...\n')
 
 df_yahoo = pd.merge(df_yahoo, targets, on=TARGET_JOIN_COLS, how=TARGET_JOIN_METHOD)
-del targets # reduce memory
+del targets
+
 df_yahoo.dropna(axis=0, how='all',
                 subset=[i for i in df_yahoo.columns if not i in [DATETIME_COL, TICKER_COL, YAHOO_TICKER_COL] + NUMERAI_TARGET_NAMES + ['friday_date', 'data_type']],
                 inplace=True)
@@ -221,6 +222,7 @@ gc.collect()
 if CONVERT_DF_DTYPES:
     if VERBOSE: print('\nconverting dtypes...\n')
     df_yahoo = convert_df_dtypes(df_yahoo, **CONVERT_DTYPE_PARAMS)
+
 
 ### Save df ###
 
