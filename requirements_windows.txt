@@ -274,7 +274,7 @@ twelvedata==1.1.8
 typeguard==2.13.3
 typing-extensions==3.7.4.3
 unicodecsv==0.14.1
-urllib3==1.25.8
+urllib3==1.26.5
 vaex==4.2.0
 vaex-astro==0.8.1
 vaex-core==4.2.0

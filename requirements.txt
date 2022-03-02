@@ -217,7 +217,7 @@ ubuntu-drivers-common==0.0.0
 ufw==0.36
 unattended-upgrades==0.1
 update-checker==0.18.0
-urllib3==1.25.8
+urllib3==1.26.5
 usb-creator==0.3.7
 uvicorn==0.17.5
 uvloop==0.16.0
