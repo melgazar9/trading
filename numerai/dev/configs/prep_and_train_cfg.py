@@ -154,7 +154,7 @@ FE_pipeline = {
 
      'hc_pipe': make_pipeline(
                          FunctionTransformer(lambda x: x.astype(str)),
-                         SimpleImputer(strategy='constant'),
+                         # SimpleImputer(strategy='constant', fill_value='missing'),
                          TargetEncoder(return_df=True,
                                        handle_missing='value',
                                        handle_unknown='value',
