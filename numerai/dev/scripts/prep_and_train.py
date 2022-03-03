@@ -90,7 +90,7 @@ basic_move_params = merge_dicts(
     }
 )
 
-df_numerai = df_numerai.tail(100000) # for debugging
+# df_numerai = df_numerai.tail(100000) # for debugging
 
 
 FEATURE_CREATOR_PIPE = Pipeline(
