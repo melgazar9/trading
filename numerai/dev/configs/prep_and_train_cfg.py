@@ -4,7 +4,7 @@ from numerai.dev.configs.prep_and_train_cfg import *
 
 ### general params ###
 
-NUM_WORKERS = 8
+NUM_WORKERS = 32
 SPLIT_COLNAME = 'dataset_split'
 TARGET_COL = 'target_20d'
 PRESERVE_VARS = ['friday_date', 'date_localized', 'data_type', 'dataset_split']

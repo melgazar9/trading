@@ -93,7 +93,7 @@ basic_move_params = merge_dicts(
 # df_numerai = df_numerai.tail(100000) # for debugging
 
 
-FEATURE_MANIPULATOR_PIPE = Pipeline(
+FEATURE_CREATOR_PIPE = Pipeline(
     steps=[
         ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),\
         ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET_COL, 'yahoo_ticker'], how='any'))),\
@@ -140,10 +140,15 @@ use_memory_fs = False if platform.system() == 'Windows' else True # pandarallel 
 pandarallel.initialize(nb_workers=NUM_WORKERS, use_memory_fs=use_memory_fs)
 
 df_numerai_raw = df_numerai.copy()
-FEATURE_MANIPULATOR_PIPE.steps = list(dict(FEATURE_MANIPULATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
-feature_creator = FEATURE_MANIPULATOR_PIPE.fit(df_numerai)
-df_numerai = feature_creator.transform(df_numerai)
 
+start_feature_creation = time.time()
+
+print('\nRunning Feature Creation...\n')
+
+FEATURE_CREATOR_PIPE.steps = list(dict(FEATURE_CREATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
+feature_creator = FEATURE_CREATOR_PIPE.fit(df_numerai)
+df_numerai = feature_creator.transform(df_numerai)
+print('\nFeature Creation Took {}\n'.format(time.time() - start_feature_creation))
 gc.collect()
 
 if DROP_INIT_ROLLING_WINDOW_ROWS:
@@ -167,10 +172,13 @@ gc.collect()
 
 ### Preprocessing ###
 
-PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
+start_feature_transformation = time.time()
+print('\nRunning Feature Transformations...\n')
 
+PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
 feature_transformer = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
 final_features = get_column_names_from_ColumnTransformer(feature_transformer)
+print('\nFeature Transformation Took {}\n'.format(time.time() - start_feature_transformation))
 
 assert len([item for item, count in Counter(final_features).items() if count > 1]) == 0, 'final features has duplicate column names!'
 
@@ -184,6 +192,7 @@ gc.collect()
 
 ### Train model ###
 
+start_model_training = time.time()
 model_obj = RunModel(X_test=X_transformed,
                      features=final_features,
                      X_train=X_train_transformed,
@@ -192,6 +201,8 @@ model_obj = RunModel(X_test=X_transformed,
                      eval_set=[(X_val_transformed, y_val)],
                      df_full=df_numerai,
                      **RUN_MODEL_PARAMS).train_and_predict()
+
+print('\nModel Training Took {}\n'.format(time.time() - start_model_training))
 
 model_obj['df_numerai_raw'] = df_numerai_raw
 del df_numerai_raw
