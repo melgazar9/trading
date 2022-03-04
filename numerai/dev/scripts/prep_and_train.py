@@ -176,7 +176,7 @@ start_feature_transformation = time.time()
 print('\nRunning Feature Transformations...\n')
 
 PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
-feature_transformer = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
+feature_transformer = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit_preprocessor(X_train, y_train)
 final_features = get_column_names_from_ColumnTransformer(feature_transformer)
 print('\nFeature Transformation Took {}\n'.format(time.time() - start_feature_transformation))
 
