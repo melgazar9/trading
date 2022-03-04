@@ -188,7 +188,7 @@ class PreprocessFeatures(TransformerMixin):
 
         discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index if i not in self.preserve_vars]
         numeric_features = list(set([i for i in self.numeric_features + [i for i in detected_numeric_vars if i not in list(self.oh_features) + list(self.hc_features) + list(discarded_features) + custom_features]]))
-        oh_features = list(set([i for i in self.oh_features  + [i for i in detected_oh_vars if i not in list(self.numeric_features) + list(self.hc_features) + list(discarded_features) + custom_features]]))
+        oh_features = list(set([i for i in self.oh_features + [i for i in detected_oh_vars if i not in list(self.numeric_features) + list(self.hc_features) + list(discarded_features) + custom_features]]))
         hc_features = list(set([i for i in self.hc_features + [i for i in detected_hc_vars if i not in list(self.numeric_features) + list(self.oh_features) + list(discarded_features) + custom_features]]))
 
         ds_print('Overlap between numeric and oh_features: ' + str(list(set(np.intersect1d(numeric_features, oh_features)))), verbose=self.verbose)
@@ -221,18 +221,20 @@ class PreprocessFeatures(TransformerMixin):
         ds_print('\ndiscarded_features:' + str(discarded_features), verbose=self.verbose)
         ds_print('\ncustom_pipeline:' + str(custom_features), verbose=self.verbose)
 
-        feature_dict = {'numeric_features' : numeric_features,
-                        'oh_features' : oh_features,
-                        'hc_features' : hc_features,
+        feature_dict = {'numeric_features': numeric_features,
+                        'oh_features': oh_features,
+                        'hc_features': hc_features,
                         'custom_features': custom_features,
-                        'discarded_features': discarded_features
-                        }
+                        'discarded_features': discarded_features}
 
         return feature_dict
 
-    def fit(self, X, y, remainder='drop', sparse_threshold=0):
+    def fit_preprocessor(self, X, y=None, remainder='drop'):
 
-        if self.copy: X, y = X.copy(), y.copy()
+        if self.copy:
+            X = X.copy()
+            if y is not None:
+                y = y.copy()
 
         feature_types = self.detect_feature_types(X)
 
@@ -241,7 +243,7 @@ class PreprocessFeatures(TransformerMixin):
             # Default below
             numeric_pipe = make_pipeline(
                 # Winsorizer(distribution='gaussian', tail='both', fold=3, missing_values = 'ignore'),
-                MinMaxScaler(feature_range=(0,1)),
+                MinMaxScaler(feature_range=(0, 1)),
                 SimpleImputer(strategy='median', add_indicator=True)
             )
 
@@ -271,7 +273,7 @@ class PreprocessFeatures(TransformerMixin):
         ]
 
         if custom_pipe:
-            i=0
+            i = 0
             for cp in custom_pipe.keys():
                 transformers.append(('custom_pipe{}'.format(str(i)), cp, custom_pipe[cp]))
                 i += 1
@@ -281,9 +283,12 @@ class PreprocessFeatures(TransformerMixin):
             remainder=remainder,
             n_jobs=self.n_jobs)
 
-        feature_transformer.fit(X, y)
-        setattr(feature_transformer, 'feature_types', feature_types) # set an attribute for feature types
+        if y is None:
+            feature_transformer.fit(X)
+        else:
+            feature_transformer.fit(X, y)
 
+        setattr(feature_transformer, 'feature_types', feature_types)
         return feature_transformer
 
 
