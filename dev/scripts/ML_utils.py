@@ -229,7 +229,10 @@ class PreprocessFeatures(TransformerMixin):
 
         return feature_dict
 
-    def fit_preprocessor(self, X, y=None, remainder='drop'):
+
+   def fit(self, X, y=None, remainder='drop'):
+
+        """ This breaks the sklearn standard of returning self, but I don't currently know a better way to do this """
 
         if self.copy:
             X = X.copy()
@@ -282,11 +285,6 @@ class PreprocessFeatures(TransformerMixin):
             transformers=transformers,
             remainder=remainder,
             n_jobs=self.n_jobs)
-
-        if y is None:
-            feature_transformer.fit(X)
-        else:
-            feature_transformer.fit(X, y)
 
         setattr(feature_transformer, 'feature_types', feature_types)
         return feature_transformer
