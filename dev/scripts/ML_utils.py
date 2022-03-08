@@ -230,7 +230,7 @@ class PreprocessFeatures(TransformerMixin):
         return feature_dict
 
 
-   def fit(self, X, y=None, remainder='drop'):
+    def fit(self, X, y=None, remainder='drop'):
 
         """ This breaks the sklearn standard of returning self, but I don't currently know a better way to do this """
 
