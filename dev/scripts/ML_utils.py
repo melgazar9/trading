@@ -86,51 +86,33 @@ def parallize_pandas_func(df, df_attribute, parallelize_by_col=True, num_workers
 
 
 class PreprocessFeatures(TransformerMixin):
-
     """
-
         Parameters
         ----------
         preserve_vars : A list of variables that won't be fitted or transformed by any sort of feature engineering
-
         target : A string - the name of the target variable.
-
         remainder : A string that gets passed to the column transformer whether to
                     drop preserve_vars or keep them in the final dataset
                     options are 'drop' or 'passthrough'
-
         max_oh_cardinality : A natural number - one-hot encode all features with unique categories <= to this value
-
         FE_pipeline_dict : Set to None to use "standard" feature engineering pipeline. Otherwise, supply a dictionary of pipelines to hc_pipe, oh_pipe, numeric_pipe, and custom_pipe
-
         n_jobs : An int - the number of threads to use
-
         copy : boolean to copy X_train and X_test while preprocessing
-
         -------
-
         Attributes
-
         detect_feature_types attributes are dictionary attributes
-
         fit attributes are sklearn ColumnTransformer attributes
-
         -------
         Returns
-
         detect features returns a dictionary
-
         fit returns a ColumnTransformer object
-
         We can call fit_transform because we inherited the sklearn base TransformerMixin class
-
-
         -------
     """
 
     def __init__(self,
-                 preserve_vars,
-                 target,
+                 target=None,
+                 preserve_vars=None,
                  FE_pipeline_dict=None,
                  remainder='drop',
                  max_oh_cardinality=11,
@@ -157,6 +139,8 @@ class PreprocessFeatures(TransformerMixin):
         self.verbose = verbose
         self.copy = copy
 
+        self.preserve_vars = [] if self.preserve_vars is None else self.preserve_vars
+        self.target = '' if self.target is None else self.target
 
     def detect_feature_types(self, X):
 
@@ -170,26 +154,43 @@ class PreprocessFeatures(TransformerMixin):
                             'custom_features': self.FE_pipeline_dict['custom_pipeline'].values()}
             return feature_dict
 
-        if 'custom_pipeline' in self.FE_pipeline_dict.keys():
-            custom_features = list(itertools.chain(*self.FE_pipeline_dict['custom_pipeline'].values()))
+        if self.FE_pipeline_dict is not None:
+            if 'custom_pipeline' in self.FE_pipeline_dict.keys():
+                custom_features = list(itertools.chain(*self.FE_pipeline_dict['custom_pipeline'].values()))
         else:
             custom_features = []
 
-        assert len(np.intersect1d(list(set(self.numeric_features + self.oh_features + self.hc_features + custom_features)), self.preserve_vars)) == 0,\
+        assert len(
+            np.intersect1d(list(set(self.numeric_features + self.oh_features + self.hc_features + custom_features)),
+                           self.preserve_vars)) == 0, \
             'There are duplicate features in preserve_vars either the input numeric_features, oh_features, or hc_features'
 
-        detected_numeric_vars = make_column_selector(dtype_include=np.number)(X[[i for i in X.columns if i not in self.preserve_vars + [self.target] + custom_features]])
-        detected_oh_vars = [i for i in X.loc[:, (X.nunique() < self.max_oh_cardinality) & (X.nunique() > 1)].columns if i not in self.preserve_vars + [self.target] + custom_features]
-        detected_hc_vars = X[[i for i in X.columns if i not in self.preserve_vars + custom_features]]\
-                            .select_dtypes(['object', 'category'])\
-                            .apply(lambda col: col.nunique())\
-                            .loc[lambda x: x > self.max_oh_cardinality]\
-                            .index.tolist()
+        detected_numeric_vars = make_column_selector(dtype_include=np.number)(
+            X[[i for i in X.columns if i not in self.preserve_vars + [self.target] + custom_features]])
+        detected_oh_vars = [i for i in X.loc[:, (X.nunique() < self.max_oh_cardinality) & (X.nunique() > 1)].columns if
+                            i not in self.preserve_vars + [self.target] + custom_features]
+        detected_hc_vars = X[[i for i in X.columns if i not in self.preserve_vars + custom_features]] \
+            .select_dtypes(['object', 'category']) \
+            .apply(lambda col: col.nunique()) \
+            .loc[lambda x: x > self.max_oh_cardinality] \
+            .index.tolist()
 
         discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index if i not in self.preserve_vars]
-        numeric_features = list(set([i for i in self.numeric_features + [i for i in detected_numeric_vars if i not in list(self.oh_features) + list(self.hc_features) + list(discarded_features) + custom_features]]))
-        oh_features = list(set([i for i in self.oh_features + [i for i in detected_oh_vars if i not in list(self.numeric_features) + list(self.hc_features) + list(discarded_features) + custom_features]]))
-        hc_features = list(set([i for i in self.hc_features + [i for i in detected_hc_vars if i not in list(self.numeric_features) + list(self.oh_features) + list(discarded_features) + custom_features]]))
+
+        numeric_features = list(set([i for i in self.numeric_features + [i for i in detected_numeric_vars if
+                                                                         i not in list(self.oh_features) + list(
+                                                                             self.hc_features) + list(
+                                                                             discarded_features) + custom_features]]))
+
+        oh_features = list(set([i for i in self.oh_features + [i for i in detected_oh_vars if
+                                                               i not in list(self.numeric_features) + list(
+                                                                   self.hc_features) + list(
+                                                                   discarded_features) + custom_features]]))
+
+        hc_features = list(set([i for i in self.hc_features + [i for i in detected_hc_vars if
+                                                               i not in list(self.numeric_features) + list(
+                                                                   self.oh_features) + list(
+                                                                   discarded_features) + custom_features]]))
 
         ds_print('Overlap between numeric and oh_features: ' + str(list(set(np.intersect1d(numeric_features, oh_features)))), verbose=self.verbose)
         ds_print('Overlap between numeric and hc_features: ' + str(list(set(np.intersect1d(numeric_features, hc_features)))), verbose=self.verbose)
@@ -197,13 +198,19 @@ class PreprocessFeatures(TransformerMixin):
         ds_print('Overlap between oh_features and hc_features will be moved to oh_features', verbose=self.verbose)
 
         if self.overwrite_detection:
-            numeric_features = [i for i in numeric_features if i not in oh_features + hc_features + discarded_features + custom_features]
-            oh_features = [i for i in oh_features if i not in hc_features + numeric_features + discarded_features + custom_features]
-            hc_features = [i for i in hc_features if i not in oh_features + numeric_features + discarded_features + custom_features]
+            numeric_features = [i for i in numeric_features if
+                                i not in oh_features + hc_features + discarded_features + custom_features]
+            oh_features = [i for i in oh_features if
+                           i not in hc_features + numeric_features + discarded_features + custom_features]
+            hc_features = [i for i in hc_features if
+                           i not in oh_features + numeric_features + discarded_features + custom_features]
         else:
-            numeric_overlap = [i for i in numeric_features if i in oh_features or i in hc_features and i not in discarded_features + custom_features]
-            oh_overlap = [i for i in oh_features if i in hc_features or i in numeric_features and i not in discarded_features + custom_features]
-            hc_overlap = [i for i in hc_features if i in oh_features or i in numeric_features and i not in discarded_features + custom_features]
+            numeric_overlap = [i for i in numeric_features if
+                               i in oh_features or i in hc_features and i not in discarded_features + custom_features]
+            oh_overlap = [i for i in oh_features if
+                          i in hc_features or i in numeric_features and i not in discarded_features + custom_features]
+            hc_overlap = [i for i in hc_features if
+                          i in oh_features or i in numeric_features and i not in discarded_features + custom_features]
 
             if numeric_overlap or oh_overlap or hc_overlap:
                 raise('Error - There is an overlap between numeric, oh, and hc features! To ignore this set overwrite_detection to True.')
@@ -229,10 +236,14 @@ class PreprocessFeatures(TransformerMixin):
 
         return feature_dict
 
-
     def fit(self, X, y=None, remainder='drop'):
 
         """ This breaks the sklearn standard of returning self, but I don't currently know a better way to do this """
+
+        if self.target is None and y is not None:
+            self.target = y.name
+
+        assert y is not None and self.target is not None, '\n Both self.target and y cannot be None!'
 
         if self.copy:
             X = X.copy()
@@ -251,17 +262,19 @@ class PreprocessFeatures(TransformerMixin):
             )
 
             hc_pipe = make_pipeline(
-                                FunctionTransformer(lambda x: x.astype(str)),
-                                TargetEncoder(return_df=True,
-                                              handle_missing='value',
-                                              handle_unknown='value',
-                                              min_samples_leaf=10)
-                               )
+                FunctionTransformer(lambda x: x.astype(str)),
+                TargetEncoder(return_df=True,
+                              handle_missing='value',
+                              handle_unknown='value',
+                              min_samples_leaf=10)
+            )
 
             oh_pipe = make_pipeline(
                 FunctionTransformer(lambda x: x.astype(str)),
                 OneHotEncoder(handle_unknown='ignore', sparse=False)
             )
+
+            custom_pipe = None
 
         else:
             hc_pipe = self.FE_pipeline_dict['hc_pipe']
@@ -281,22 +294,29 @@ class PreprocessFeatures(TransformerMixin):
                 transformers.append(('custom_pipe{}'.format(str(i)), cp, custom_pipe[cp]))
                 i += 1
 
-        feature_transformer = ColumnTransformer(
-            transformers=transformers,
-            remainder=remainder,
-            n_jobs=self.n_jobs)
+        if y is None:
+            feature_transformer = ColumnTransformer(
+                transformers=transformers,
+                remainder=remainder,
+                n_jobs=self.n_jobs).fit(X)
+        else:
+            feature_transformer = ColumnTransformer(
+                transformers=transformers,
+                remainder=remainder,
+                n_jobs=self.n_jobs).fit(X, y)
 
         setattr(feature_transformer, 'feature_types', feature_types)
+
         return feature_transformer
 
 
 def get_column_names_from_ColumnTransformer(column_transformer):
+
     col_name = []
+    for transformer_in_columns in column_transformer.transformers_[:-1]:
 
-    for transformer_in_columns in column_transformer.transformers_[
-                                  :-1]:  # the last transformer is ColumnTransformer's 'remainder'
-        print('\n\ntransformer: ', transformer_in_columns[0])
-
+        # the last transformer is ColumnTransformer's 'remainder'
+        ds_print('\n\ntransformer: ', transformer_in_columns[0])
         raw_col_name = list(transformer_in_columns[2])
 
         if isinstance(transformer_in_columns[1], Pipeline):
@@ -307,23 +327,21 @@ def get_column_names_from_ColumnTransformer(column_transformer):
 
         try:
             if isinstance(transformer, OneHotEncoder):
-                names = list(transformer.get_feature_names_out(raw_col_name))
+                names = list(transformer.get_feature_names(raw_col_name))
 
             elif isinstance(transformer, SimpleImputer) and transformer.add_indicator:
                 missing_indicator_indices = transformer.indicator_.features_
                 missing_indicators = [raw_col_name[idx] + '_missing_flag' for idx in missing_indicator_indices]
-
                 names = raw_col_name + missing_indicators
-
             else:
-                names = list(transformer.get_feature_names_out())
+                names = list(transformer.get_feature_names())
 
         except AttributeError as error:
             names = raw_col_name
 
-        print(names)
-
+        ds_print(names)
         col_name.extend(names)
+
     return col_name
 
 
