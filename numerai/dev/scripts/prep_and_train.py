@@ -182,9 +182,9 @@ print('\nFeature Transformation Took {}\n'.format(time.time() - start_feature_tr
 
 assert len([item for item, count in Counter(final_features).items() if count > 1]) == 0, 'final features has duplicate column names!'
 
-X_train_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_train), columns=final_features))
-X_val_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_val), columns=final_features))
-X_test_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_test), columns=final_features))
+X_train_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_train), columns=final_features, index=y_train.index))
+X_val_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_val), columns=final_features, index=y_val.index))
+X_test_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_test), columns=final_features, index=y_test.index))
 X_transformed = clean_columns(pd.concat([X_train_transformed, X_val_transformed, X_test_transformed]))
 final_features = X_train_transformed.columns
 
