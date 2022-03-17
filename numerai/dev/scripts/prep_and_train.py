@@ -147,7 +147,7 @@ print('\nRunning Feature Creation...\n')
 
 FEATURE_CREATOR_PIPE.steps = list(dict(FEATURE_CREATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
 feature_creator = FEATURE_CREATOR_PIPE.fit(df_numerai)
-df_numerai2 = feature_creator.transform(df_numerai)
+df_numerai = feature_creator.transform(df_numerai)
 print('\nFeature Creation Took {}\n'.format(time.time() - start_feature_creation))
 
 gc.collect()
