@@ -672,8 +672,8 @@ class FeatureImportance:
         fig.show()
 
 
-def ds_print(*args, verbose = True):
-    if verbose: print("".join(map(str, *args)))
+def ds_print(*args, verbose=True):
+    if verbose: print(*args)
 
 class RunModel():
 
