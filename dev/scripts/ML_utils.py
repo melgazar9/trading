@@ -263,8 +263,7 @@ class PreprocessFeatures(TransformerMixin):
             )
 
             hc_pipe = make_pipeline(
-                FunctionTransformer(lambda x: x.replace([np.inf, -np.inf], np.nan)),
-                FunctionTransformer(lambda x: x.astype(str)),
+                FunctionTransformer(lambda x: x.replace([np.inf, -np.inf], np.nan).astype(str)),
                 TargetEncoder(return_df=True,
                               handle_missing='value',
                               handle_unknown='value',
@@ -272,8 +271,7 @@ class PreprocessFeatures(TransformerMixin):
             )
 
             oh_pipe = make_pipeline(
-                FunctionTransformer(lambda x: x.replace([np.inf, -np.inf], np.nan)),
-                FunctionTransformer(lambda x: x.astype(str)),
+                FunctionTransformer(lambda x: x.replace([np.inf, -np.inf], np.nan).astype(str)),
                 OneHotEncoder(handle_unknown='ignore', sparse=False)
             )
 
