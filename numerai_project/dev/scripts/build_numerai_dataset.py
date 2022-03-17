@@ -21,8 +21,8 @@ os.environ['NUMEXPR_NUM_THREADS'] = '16'
 sys.path.append(os.getcwd())
 from dev.scripts.ML_utils import * # run if on local machine
 from dev.scripts.trading_utils import * # run if on local machine
-from numerai.dev.scripts.numerai_utils import *
-from numerai.dev.configs.build_numerai_dataset_cfg import *
+from numerai_project.dev.scripts.numerai_utils import *
+from numerai_project.dev.configs.build_numerai_dataset_cfg import *
 
 
 ###  pd options / configs ###
@@ -30,7 +30,7 @@ from numerai.dev.configs.build_numerai_dataset_cfg import *
 pd.set_option('display.float_format', lambda x: '%.5f' % x)
 pd.set_option('display.max_columns', 10)
 config = ConfigParser()
-config.read('numerai/numerai_keys.ini')
+config.read('numerai_project/numerai_keys.ini')
 
 ### connect to the numerai signals API ###
 

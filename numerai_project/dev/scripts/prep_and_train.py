@@ -19,8 +19,8 @@ sys.path.append(os.getcwd())
 
 from dev.scripts.ML_utils import * # run if on local machine
 from dev.scripts.trading_utils import * # run if on local machine
-from numerai.dev.scripts.numerai_utils import *
-from numerai.dev.configs.prep_and_train_cfg import *
+from numerai_project.dev.scripts.numerai_utils import *
+from numerai_project.dev.configs.prep_and_train_cfg import *
 
 os.environ['NUMEXPR_MAX_THREADS'] = '32'
 os.environ['NUMEXPR_NUM_THREADS'] = '16'
@@ -30,7 +30,7 @@ start_time = time.time()
 pd.set_option('display.float_format', lambda x: '%.5f' % x, 'display.max_columns', 7)
 
 config = ConfigParser()
-config.read('numerai/numerai_keys.ini')
+config.read('numerai_project/numerai_keys.ini')
 
 # Connect to the Numerai API
 napi = numerapi.SignalsAPI(config['KEYS']['NUMERAI_PUBLIC_KEY'], config['KEYS']['NUMERAI_SECRET_KEY'])

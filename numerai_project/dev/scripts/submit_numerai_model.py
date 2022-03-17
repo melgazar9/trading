@@ -6,7 +6,7 @@ import gc
 from configparser import ConfigParser
 
 config = ConfigParser()
-config.read('numerai/numerai_keys.ini')
+config.read('numerai_project/numerai_keys.ini')
 napi = numerapi.SignalsAPI(config['KEYS']['NUMERAI_PUBLIC_KEY'], config['KEYS']['NUMERAI_SECRET_KEY'])
 
 

@@ -1,10 +1,10 @@
 setwd(paste0('/Users/', as.character(Sys.info()['user']), '/scripts/github/trading'))
 
-source('numerai/dev/scripts/required_libraries.R')
+source('numerai_project/dev/scripts/required_libraries.R')
 
-source('numerai/dev/scripts/pull_data_utils.R')
-source('numerai/dev/scripts/flatten_dt_fn.R')
-source('numerai/dev/scripts/getSymbols_tidyquant.R')
+source('numerai_project/dev/scripts/pull_data_utils.R')
+source('numerai_project/dev/scripts/flatten_dt_fn.R')
+source('numerai_project/dev/scripts/getSymbols_tidyquant.R')
 
 ###### Global Variables #####
 

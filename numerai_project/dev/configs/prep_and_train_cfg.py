@@ -1,6 +1,6 @@
 from dev.scripts.ML_utils import *
-from numerai.dev.scripts.numerai_utils import *
-from numerai.dev.configs.prep_and_train_cfg import *
+from numerai_project.dev.scripts.numerai_utils import *
+from numerai_project.dev.configs.prep_and_train_cfg import *
 
 ### general params ###
 

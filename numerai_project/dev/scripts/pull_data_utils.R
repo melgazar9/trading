@@ -1,6 +1,6 @@
 setwd(paste0('/Users/', as.character(Sys.info()['user']), '/scripts/github/trading'))
 
-source('numerai/dev/scripts/required_libraries.R')
+source('numerai_project/dev/scripts/required_libraries.R')
 
 library('tidyquant')
 
