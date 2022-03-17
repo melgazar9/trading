@@ -4,23 +4,23 @@ import pandas as pd
 
 """ path params """
 
-INIT_SAVE_FILEPATH = 'D:/trading/data/numerai/datasets/raw_data/df_numerai_init_' + str(datetime.datetime.today().date()) + '.pkl' # windows --- set to None to not save
-# INIT_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/raw_data/df_numerai_init_' + str(datetime.datetime.today().date()) + '.pq' # linux
+# INIT_SAVE_FILEPATH = 'D:/trading/data/numerai/datasets/raw_data/df_numerai_init_' + str(datetime.datetime.today().date()) + '.pkl' # windows --- set to None to not save
+INIT_SAVE_FILEPATH = None # '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/raw_data/df_numerai_init_' + str(datetime.datetime.today().date()) + '.pkl' # linux
 
 # the below filepath reads the df into memory if DOWNLOAD_YAHOO_DATA == False
-# YAHOO_READ_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_init_2021-11-05.feather' # linux
-YAHOO_READ_FILEPATH = 'D:/trading/data/numerai/datasets/raw_data/df_numerai_init_2021-11-05.pkl' # windows
+YAHOO_READ_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_init_2021-11-05.feather' # linux
+# YAHOO_READ_FILEPATH = 'D:/trading/data/numerai/datasets/raw_data/df_numerai_init_2021-11-05.pkl' # windows
 
 
-# FINAL_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # linux
-FINAL_SAVE_FILEPATH = 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # windows
+FINAL_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # linux
+# FINAL_SAVE_FILEPATH = 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # windows
 
-OLD_FULL_NUMERAI_BUILD_FILEPATH = 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_2022-02-18.feather'
+APPEND_OLD_DATA = True
+OLD_FULL_NUMERAI_BUILD_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/processed_data/df_numerai_build_2022-02-19.feather'
+
 
 
 """ general params """
-
-APPEND_OLD_DATA = False
 
 VERBOSE = True
 DASK_NPARTITIONS=16
@@ -48,7 +48,7 @@ DOWNLOAD_VALID_TICKERS_PARAMS = {'numerai_ticker_link': 'https://numerai-signals
                                  'verbose': True}
 
 DOWNLOAD_YAHOO_DATA = True
-# 'tickers': ['SPY', 'AAPL', 'AMZN', 'TSLA', 'FB', 'MSFT', 'IWM'],
+# 'tickers': ['SPY', 'AAPL', 'AMZN', 'TSLA', 'FB', 'MSFT', 'IWM']
 DOWNLOAD_YFINANCE_DATA_PARAMS = {
                                  'intervals_to_download': ['1d', '1h'],
                                  'max_intraday_lookback_days': 363,

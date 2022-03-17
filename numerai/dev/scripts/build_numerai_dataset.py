@@ -40,6 +40,18 @@ napi = numerapi.SignalsAPI(config['KEYS']['NUMERAI_PUBLIC_KEY'], config['KEYS'][
 
 ticker_map = download_ticker_map(napi, **DOWNLOAD_VALID_TICKERS_PARAMS)
 
+if APPEND_OLD_DATA:
+    # load in data
+    if OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('pq') or OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith(
+            'parquet'):
+        df_numerai_old = dd.read_parquet(OLD_FULL_NUMERAI_BUILD_FILEPATH, DASK_NPARTITIONS=DASK_NPARTITIONS).compute()
+    elif OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('feather'):
+        df_numerai_old = pd.read_feather(OLD_FULL_NUMERAI_BUILD_FILEPATH)
+
+    DOWNLOAD_YFINANCE_DATA_PARAMS['yfinance_params']['start'] = str(df_numerai_old[DATETIME_COL].max().date())
+    df_numerai_old.set_index([TICKER_COL, DATETIME_COL], inplace=True)
+
+
 ### Download or load in yahoo finance data in the expected numerai format using the yfinance library ###
 
 # Yahoo Finance wrappers: https://github.com/ranaroussi/yfinance and https://pypi.org/project/yfinance/.
@@ -47,13 +59,10 @@ ticker_map = download_ticker_map(napi, **DOWNLOAD_VALID_TICKERS_PARAMS)
 
 if DOWNLOAD_YAHOO_DATA:
     if VERBOSE: print('****** Downloading yfinance data ******')
-
     # DOWNLOAD_YFINANCE_DATA_PARAMS['tickers'] = ['FB', 'AMZN', 'AAPL', 'TSLA', 'MSFT', 'NVDA'] # for debugging
     if 'tickers' not in DOWNLOAD_YFINANCE_DATA_PARAMS.keys():
         DOWNLOAD_YFINANCE_DATA_PARAMS['tickers'] = ticker_map['yahoo'].tolist() # all valid yahoo finance tickers
-
     dfs = download_yfinance_data(**DOWNLOAD_YFINANCE_DATA_PARAMS)
-
 else:
     # load in data
     if YAHOO_READ_FILEPATH.lower().endswith('pq') or YAHOO_READ_FILEPATH.lower().endswith('parquet'):
@@ -62,6 +71,7 @@ else:
         df_yahoo = pd.read_feather(YAHOO_READ_FILEPATH)
     elif YAHOO_READ_FILEPATH.lower().lower().endswith('pkl'):
         dfs = dill.load(open(YAHOO_READ_FILEPATH, 'rb'))
+
 
 ### save dfs after initial download for backup ###
 
@@ -119,22 +129,17 @@ if VERBOSE: print(df_yahoo.info())
 gc.collect()
 
 if APPEND_OLD_DATA:
-    # load in data
-    if OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('pq') or OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('parquet'):
-        df_numerai_old = dd.read_parquet(OLD_FULL_NUMERAI_BUILD_FILEPATH, DASK_NPARTITIONS=DASK_NPARTITIONS).compute()
-    elif OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('feather'):
-        df_numerai_old = pd.read_feather(OLD_FULL_NUMERAI_BUILD_FILEPATH)
 
-    df_numerai_old.set_index([TICKER_COL, DATETIME_COL], inplace=True)
     df_yahoo.set_index([TICKER_COL, DATETIME_COL], inplace=True)
 
-    cols_to_backfill = np.intersect1d(df_yahoo.columns, [i for i in df_numerai_old.columns if '1h' in i]) # backfill the new yahoo download with the old 1hr granular data
-    df_yahoo[cols_to_backfill] = df_yahoo[cols_to_backfill].fillna(df_numerai_old[cols_to_backfill])
+    column_order = list(df_yahoo.columns)
+    df_numerai_old = df_numerai_old[column_order]
+    df_yahoo = pd.concat([df_numerai_old, df_yahoo], axis=0)
+
     df_yahoo.reset_index(drop=True, inplace=True)
 
     del df_numerai_old
     gc.collect()
-
 
 ### test if [yahoo_ticker_col + datetime] makes a unique index ###
 

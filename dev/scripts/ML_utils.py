@@ -256,12 +256,14 @@ class PreprocessFeatures(TransformerMixin):
 
             # Default below
             numeric_pipe = make_pipeline(
+                FunctionTransformer(lambda x: x.replace([np.inf, -np.inf], np.nan)),
                 # Winsorizer(distribution='gaussian', tail='both', fold=3, missing_values = 'ignore'),
                 MinMaxScaler(feature_range=(0, 1)),
                 SimpleImputer(strategy='median', add_indicator=True)
             )
 
             hc_pipe = make_pipeline(
+                FunctionTransformer(lambda x: x.replace([np.inf, -np.inf], np.nan)),
                 FunctionTransformer(lambda x: x.astype(str)),
                 TargetEncoder(return_df=True,
                               handle_missing='value',
@@ -270,6 +272,7 @@ class PreprocessFeatures(TransformerMixin):
             )
 
             oh_pipe = make_pipeline(
+                FunctionTransformer(lambda x: x.replace([np.inf, -np.inf], np.nan)),
                 FunctionTransformer(lambda x: x.astype(str)),
                 OneHotEncoder(handle_unknown='ignore', sparse=False)
             )
@@ -313,10 +316,8 @@ class PreprocessFeatures(TransformerMixin):
 def get_column_names_from_ColumnTransformer(column_transformer):
 
     col_name = []
-    for transformer_in_columns in column_transformer.transformers_[:-1]:
-
-        # the last transformer is ColumnTransformer's 'remainder'
-        ds_print('\n\ntransformer: ', transformer_in_columns[0])
+    for transformer_in_columns in column_transformer.transformers_[:-1]:  # the last transformer is ColumnTransformer's 'remainder'
+        ds_print(f"\n\ntransformer: {transformer_in_columns[0]}")
         raw_col_name = list(transformer_in_columns[2])
 
         if isinstance(transformer_in_columns[1], Pipeline):
@@ -327,21 +328,20 @@ def get_column_names_from_ColumnTransformer(column_transformer):
 
         try:
             if isinstance(transformer, OneHotEncoder):
-                names = list(transformer.get_feature_names(raw_col_name))
+                names = list(transformer.get_feature_names_out(raw_col_name))
 
             elif isinstance(transformer, SimpleImputer) and transformer.add_indicator:
                 missing_indicator_indices = transformer.indicator_.features_
                 missing_indicators = [raw_col_name[idx] + '_missing_flag' for idx in missing_indicator_indices]
                 names = raw_col_name + missing_indicators
             else:
-                names = list(transformer.get_feature_names())
+                names = list(transformer.get_feature_names_out())
 
         except AttributeError as error:
             names = raw_col_name
 
         ds_print(names)
         col_name.extend(names)
-
     return col_name
 
 
