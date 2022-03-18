@@ -143,12 +143,12 @@ input_df = df_numerai.copy()
 
 start_feature_creation = time.time()
 
-print('\nRunning Feature Creation...\n')
+print('\nRunning feature creation...\n')
 
 FEATURE_CREATOR_PIPE.steps = list(dict(FEATURE_CREATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
 feature_creator = FEATURE_CREATOR_PIPE.fit(df_numerai)
 df_numerai = feature_creator.transform(df_numerai)
-print('\nFeature Creation Took {}\n'.format(time.time() - start_feature_creation))
+print('\nFeature creation took {} minutes.\n'.format(round((time.time() - start_feature_creation) / 60, 3)))
 
 gc.collect()
 
@@ -179,11 +179,11 @@ gc.collect()
 
 start_feature_transformation = time.time()
 
-print('\nRunning Feature Transformations...\n')
+print('\nRunning feature transformations...\n')
 PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
 feature_transformer = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
 final_features = get_column_names_from_ColumnTransformer(feature_transformer)
-print('\nFeature Transformation Took {}\n'.format(time.time() - start_feature_transformation))
+print('\nFeature transformation took {} minutes.\n'.format(round((time.time() - start_feature_transformation) / 60, 3)))
 
 assert len([item for item, count in Counter(final_features).items() if count > 1]) == 0, 'final features has duplicate column names!'
 
@@ -207,7 +207,7 @@ model_obj = RunModel(X_test=X_transformed,
                      df_full=df_numerai,
                      **RUN_MODEL_PARAMS).train_and_predict()
 
-print('\nModel Training Took {}\n'.format(time.time() - start_model_training))
+print(f"\nModel training took {round((time.time() - start_model_training) / 60, 3)} minutes.\n")
 
 model_obj['input_df'] = input_df
 del input_df
