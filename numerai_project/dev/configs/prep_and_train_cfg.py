@@ -41,6 +41,8 @@ TIMESERIES_SPLIT_PARAMS = {'train_prop': .7,
 
 CONVERT_DTYPE_PARAMS = {'verbose': False}
 
+USE_NUMERAI_TRAIN_TEST_SPLIT = True
+
 ########################################
 ###### Feature Engineering Params ######
 ########################################

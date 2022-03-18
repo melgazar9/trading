@@ -139,7 +139,7 @@ FEATURE_CREATOR_PIPE = Pipeline(
 use_memory_fs = False if platform.system() == 'Windows' else True # pandarallel fails on windows in pycharm with use_memory_fs set to the default True
 pandarallel.initialize(nb_workers=NUM_WORKERS, use_memory_fs=use_memory_fs)
 
-df_numerai_raw = df_numerai.copy()
+input_df = df_numerai.copy()
 
 start_feature_creation = time.time()
 
@@ -155,10 +155,14 @@ gc.collect()
 if DROP_INIT_ROLLING_WINDOW_ROWS:
     df_numerai = df_numerai[df_numerai[DATE_COL] >= df_numerai[DATE_COL].min() + datetime.timedelta(ROLLING_FEATURES_PARAMS['rolling_params']['window'])]
 
-
 ### Timeseries Split ###
 
 df_numerai = df_numerai.groupby([TICKER_COL]).apply(lambda df: timeseries_split(df, **TIMESERIES_SPLIT_PARAMS))
+
+if 'data_type' in df_numerai.columns and USE_NUMERAI_TRAIN_TEST_SPLIT:
+    # use numerai train/val/test rows
+    df_numerai.loc[(df_numerai['dataset_split'] == 'train') & (df_numerai['data_type'] == 'validation'), 'dataset_split'] = 'val'
+    df_numerai.loc[(df_numerai['dataset_split'] == 'val') & (df_numerai['data_type'] == 'train'), 'dataset_split'] = 'train'
 
 input_features = eval(INPUT_FEATURES_STRING)
 preserve_vars = list(set(PRESERVE_VARS + eval(PRESERVE_VARS_STRING)))
@@ -174,8 +178,8 @@ gc.collect()
 ### Preprocessing ###
 
 start_feature_transformation = time.time()
-print('\nRunning Feature Transformations...\n')
 
+print('\nRunning Feature Transformations...\n')
 PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
 feature_transformer = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
 final_features = get_column_names_from_ColumnTransformer(feature_transformer)
@@ -187,8 +191,8 @@ X_train_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X
 X_val_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_val), columns=final_features, index=y_val.index))
 X_test_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_test), columns=final_features, index=y_test.index))
 X_transformed = clean_columns(pd.concat([X_train_transformed, X_val_transformed, X_test_transformed]))
-final_features = X_train_transformed.columns
 
+final_features = X_train_transformed.columns
 gc.collect()
 
 ### Train model ###
@@ -205,8 +209,8 @@ model_obj = RunModel(X_test=X_transformed,
 
 print('\nModel Training Took {}\n'.format(time.time() - start_model_training))
 
-model_obj['df_numerai_raw'] = df_numerai_raw
-del df_numerai_raw
+model_obj['input_df'] = input_df
+del input_df
 
 model_obj['feature_creator'] = feature_creator
 del feature_creator
