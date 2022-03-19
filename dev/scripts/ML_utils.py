@@ -338,6 +338,9 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
         transformer_name, transformer, orig_feature_names = transformer_item
         orig_feature_names = list(orig_feature_names)
 
+        if len(orig_feature_names) == 0:
+            continue
+
         if verbose:
             print(f"\n\n{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}\n")
             print(f"\tn_orig_feature_names:{len(orig_feature_names)}")

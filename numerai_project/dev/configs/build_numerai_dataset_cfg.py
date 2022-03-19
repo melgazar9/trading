@@ -16,7 +16,7 @@ FINAL_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/b
 # FINAL_SAVE_FILEPATH = 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # windows
 
 APPEND_OLD_DATA = True
-OLD_FULL_NUMERAI_BUILD_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/processed_data/df_numerai_build_2022-02-19.feather'
+OLD_FULL_NUMERAI_BUILD_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/processed_data/' + max(os.listdir('/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/processed_data/'))
 
 
 

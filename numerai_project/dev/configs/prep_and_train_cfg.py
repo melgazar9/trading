@@ -204,7 +204,9 @@ IAR_PARAMS = {'iar_cols': ['move_1d', 'high_move_1d', 'low_move_1d'], 'copy': Fa
 #                  subsample=0.7)
 #     ]
 
-ALGORITHM = XGBRegressor(colsample_bytree=0.8,
+ALGORITHM = Pipeline(steps=[
+    ('pca', PCA(n_components=150)),
+    ('model', XGBRegressor(colsample_bytree=0.8,
                          gamma=0.01,
                          learning_rate=0.05,
                          max_depth=5,
@@ -212,7 +214,8 @@ ALGORITHM = XGBRegressor(colsample_bytree=0.8,
                          n_estimators=100,
                          n_jobs=NUM_WORKERS,
                          random_state=0,
-                         subsample=0.7)
+                         subsample=0.7))
+                     ])
 
 RUN_MODEL_PARAMS = {
     'copy': True,
