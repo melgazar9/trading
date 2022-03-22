@@ -8,8 +8,10 @@ from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 import warnings
 import dask
 from dask import delayed
+from skimpy import clean_columns
 
 class DataValidator():
+
     """
 
     Objective: Validate all outputs from a pandas df
@@ -48,7 +50,6 @@ def download_yfinance_data(tickers,
                            yahoo_ticker_colname='yahoo_ticker',
                            verbose=True):
     """
-
     Parameters
     __________
 
@@ -68,6 +69,9 @@ def download_yfinance_data(tickers,
     NOTE: passing some intervals return unreliable stock data (e.g. '3mo' returns many NA data points when they should not be NA)
     """
 
+    failed_ticker_downloads = []
+    failed_datetime_features = []
+
     if not 'start' in yfinance_params.keys():
         if verbose: print('*** yfinance params start set to 2005-01-01! ***')
         yfinance_params['start'] = '2005-01-01'
@@ -79,6 +83,7 @@ def download_yfinance_data(tickers,
 
     intraday_lookback_days = datetime.datetime.today().date() - datetime.timedelta(days=max_intraday_lookback_days)
     start_date = yfinance_params['start']
+    assert pd.Timestamp(start_date) <= datetime.datetime.today(), 'Start date cannot be after the current date!'
 
     if num_workers == 1:
 
@@ -87,7 +92,7 @@ def download_yfinance_data(tickers,
 
             yfinance_params['interval'] = i
 
-            if (i.endswith('m') or i.endswith('h')) and (pd.to_datetime(yfinance_params['start']) < intraday_lookback_days):
+            if (i.endswith('m') or i.endswith('h')) and (pd.Timestamp(yfinance_params['start']) < pd.Timestamp(intraday_lookback_days)):
                 yfinance_params['start'] = str(intraday_lookback_days)
 
             if yfinance_params['threads'] == True:
@@ -103,14 +108,23 @@ def download_yfinance_data(tickers,
                 column_order = ['date', yahoo_ticker_colname, 'Adj Close', 'Close', 'High', 'Low', 'Open', 'Volume']
 
                 for chunk in ticker_chunks:
+                    if verbose: print(f"Running chunk {chunk}")
                     try:
                         if n_chunks == 1 or len(chunk.split(' ')) == 1:
-                            df_tmp = yfinance.download(chunk, **yfinance_params)\
-                                             .rename_axis(index='date')\
-                                             .reset_index()
+                            try:
+                                df_tmp = yfinance.download(chunk, **yfinance_params)\
+                                                 .rename_axis(index='date')\
+                                                 .reset_index()
+                                if len(df_tmp) == 0:
+                                    continue
+                            except:
+                                if verbose: print(f"failed download for tickers: {chunk}")
+                                failed_ticker_downloads.append(chunk)
+
                             df_tmp[yahoo_ticker_colname] = chunk
                             df_tmp = df_tmp[column_order]
                             df_tmp.columns = df_tmp.columns.map(lambda c: c + '_' + i if c != 'date' and c != yahoo_ticker_colname else c)
+
                         else:
                             # should be the order of column_order
                             df_tmp = yfinance.download(chunk, **yfinance_params) \
@@ -118,8 +132,13 @@ def download_yfinance_data(tickers,
                                 .add_suffix('_' + i) \
                                 .rename_axis(index=['date', yahoo_ticker_colname]) \
                                 .reset_index()
+
+                            if len(df_tmp) == 0:
+                                continue
+
                             new_column_order = ['date', yahoo_ticker_colname] + [x + '_' + i for x in column_order if not x in ['date', yahoo_ticker_colname]]
                             df_tmp = df_tmp[new_column_order]
+
                         chunk_dfs_lst.append(df_tmp)
 
                     except simplejson.errors.JSONDecodeError:
@@ -132,7 +151,10 @@ def download_yfinance_data(tickers,
             # set UTC to True because we're pulling data from all over the world, and pandas cannot convert Tz-aware datetimes unless UTC is true
             if i == '1d' and type(tz_localize_location) == str:
                 df_i['date_localized'] = pd.to_datetime(df_i['date'], utc=True).dt.tz_convert(tz_localize_location)
-                create_datetime_features(df_i, 'date', include_hour=False, make_copy=False)
+                try:
+                    create_datetime_features(df_i, 'date', include_hour=False, make_copy=False)
+                except AttributeError:
+                    failed_datetime_features.append(chunk)
 
             elif i == '1h':
                 # date will be dtype object after concat because when pulling hour data from yfinance the date
@@ -143,12 +165,30 @@ def download_yfinance_data(tickers,
                 except:
                     try:
                         df_i.loc[:, 'hour'] = pd.to_datetime(df_i['date'].dt.hour)
-                    except:
+                    except AttributeError:
                         df_i.loc[:, 'hour'] = np.nan
                 df_i.reset_index(inplace=True)
 
-            df_i.columns = [str(col).replace(' ', '_').lower() for col in df_i.columns]
+            df_i = clean_columns(df_i)
             dict_of_dfs[i] = df_i
+
+            ### print errors ###
+
+            if verbose:
+                if len(failed_ticker_downloads) > 0:
+                    if n_chunks > 1:
+                        failed_ticker_downloads = list(itertools.chain(*failed_ticker_downloads))
+
+                if len(failed_datetime_features) > 0:
+                    if n_chunks > 1:
+                        failed_datetime_features = list(itertools.chain(*failed_datetime_features))
+
+                print(f"\nFailed ticker downloads:\n{failed_ticker_downloads}")
+                print(f"\nFailed to create datetime features for:\n{failed_datetime_features}")
+
+    else:
+        raise ValueError("Multi-threading not supported yet.")
+
     return dict_of_dfs
 
 
