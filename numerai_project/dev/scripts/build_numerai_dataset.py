@@ -229,6 +229,7 @@ if CONVERT_DF_DTYPES:
 ### append the new df to the previous df ###
 
 if APPEND_OLD_DATA:
+    if VERBOSE: print('\nAppending old data...\n')
     df_yahoo.set_index([TICKER_COL, DATETIME_COL], inplace=True)
     matching_cols = np.intersect1d(df_numerai_old.columns, df_yahoo.columns)
     new_missing_cols = list(set(df_numerai_old.columns) - set(df_yahoo.columns))
@@ -245,7 +246,6 @@ if APPEND_OLD_DATA:
     df_numerai_old.reset_index(inplace=True)
     df_numerai_old = df_numerai_old[matching_cols]
     df_yahoo = df_yahoo[matching_cols]
-
     df_yahoo = pd.concat([df_numerai_old, df_yahoo], axis=0)
 
     ### test if [yahoo_ticker_col + datetime] makes a unique index ###
@@ -254,18 +254,23 @@ if APPEND_OLD_DATA:
 
     if VERBOSE: print('datetime_ticker_cat_final: ' + str(len(datetime_ticker_cat_final)))
     assert(len(datetime_ticker_cat_final) == len(set(datetime_ticker_cat_final))), 'The final output index is not unique!'
+    del datetime_ticker_cat_final
 
 ### Save df ###
 
 if VERBOSE: print('\nsaving df build...\n')
 
+gc.collect()
+
 if FINAL_SAVE_FILEPATH.endswith('feather'):
     if 'date' in df_yahoo.index.names or YAHOO_TICKER_COL in df_yahoo.index.names:
-        df_yahoo.reset_index().to_feather(FINAL_SAVE_FILEPATH)
+        df_yahoo.reset_index(inplace=True)
+        df_yahoo.to_feather(FINAL_SAVE_FILEPATH)
     else:
         df_yahoo.reset_index(drop=True).to_feather(FINAL_SAVE_FILEPATH)
 elif FINAL_SAVE_FILEPATH.endswith('pq') or FINAL_SAVE_FILEPATH.endswith('parquet'):
     df_yahoo.to_parquet(FINAL_SAVE_FILEPATH)
 
 end_time = time.time()
+
 if VERBOSE: print('Script took:', round((end_time - start_time) / 60, 3), 'minutes')

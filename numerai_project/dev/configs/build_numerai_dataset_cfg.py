@@ -1,6 +1,6 @@
 import datetime
 import pandas as pd
-
+import os
 
 """ path params """
 
@@ -12,7 +12,7 @@ YAHOO_READ_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/b
 # YAHOO_READ_FILEPATH = 'D:/trading/data/numerai/datasets/raw_data/df_numerai_init_2021-11-05.pkl' # windows
 
 
-FINAL_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/build_dataset_dfs/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # linux
+FINAL_SAVE_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/processed_data/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # linux
 # FINAL_SAVE_FILEPATH = 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_' + str(datetime.datetime.today().date()) + '.feather' # windows
 
 APPEND_OLD_DATA = True
@@ -52,9 +52,12 @@ DOWNLOAD_YAHOO_DATA = True
 DOWNLOAD_YFINANCE_DATA_PARAMS = {
                                  'intervals_to_download': ['1d', '1h'],
                                  'max_intraday_lookback_days': 363,
-                                 'n_chunks': 1, # n_chunks=1 is the most reliable, but slow
+                                 'verbose': True,
+                                 'n_chunks': 1, # n_chunks=1 is the most reliable, but slowest
                                  # set progress to False in yfinance_params or set verbose = False in the main params to turn off progress bar per download
-                                 'yfinance_params': {'start': '1990-01-01', 'threads': False, 'progress': False}}
+                                 'yfinance_params': {'start': '1990-01-01', 'threads': False, 'progress': False}
+                                }
+
 
 """ flatten granular data params """
 
