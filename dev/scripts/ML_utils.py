@@ -416,8 +416,7 @@ class PreprocessFeatures(TransformerMixin):
 
         if self.copy:
             X = X.copy()
-            if y is not None:
-                y = y.copy()
+            y = y.copy() if y is not None else y
 
         feature_types = self.detect_feature_types(X)
 
@@ -481,17 +480,6 @@ class PreprocessFeatures(TransformerMixin):
 
         return self
 
-        # def transform(self, X):
-        #     final_features = get_column_names_from_ColumnTransformer(self.feature_transformer, clean_column_names=False, verbose=self.verbose)
-        #     for col in final_features:
-        #         if isinstance(col, int):
-        #             colname = X.iloc[:, col].name
-        #             for i, feature in enumerate(final_features):
-        #                 if final_features[i] == col:
-        #                     final_features[i] = colname
-        #     X_transformed = pd.DataFrame(self.feature_transformer.transform(X), columns=final_features)
-        #     return X_transformed
-
     def transform(self, X, return_df=True):
 
         X_out = self.feature_transformer.transform(X)
@@ -500,6 +488,7 @@ class PreprocessFeatures(TransformerMixin):
             return pd.DataFrame(list(X_out), columns=self.output_cols)
         else:
             return X_out
+
 
 class FeatureImportance:
 
