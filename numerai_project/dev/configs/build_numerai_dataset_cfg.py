@@ -43,7 +43,7 @@ CONVERT_DTYPE_PARAMS = {'new_float_dtype': 'float32',
 
 """ download_yfinance_data params """
 
-DOWNLOAD_VALID_TICKERS_PARAMS = {'numerai_ticker_link': 'https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv',
+DOWNLOAD_VALID_TICKERS_PARAMS = {'numerai_ticker_link': 'https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_train_val_bbg.csv',
                                  'main_ticker_col': TICKER_COL,
                                  'verbose': True}
 
@@ -77,5 +77,5 @@ TARGET_JOIN_COLS = [DATETIME_COL, TICKER_COL]
 
 """ numerai signals params """
 
-NUMERAI_TARGETS_URL = 'https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_train_val_bbg.csv'
+NUMERAI_TARGETS_URL = DOWNLOAD_VALID_TICKERS_PARAMS['numerai_ticker_link']
 NUMERAI_TARGET_NAMES = ['target_4d', 'target_20d'] # must be a list even if it's a single column

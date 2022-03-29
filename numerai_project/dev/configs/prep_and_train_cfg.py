@@ -18,7 +18,7 @@ START_DATE = '2015-01-01'
 
 SAVE_OBJECT = True
 OBJECT_OUTPATH = '/media/melgazar9/HDD_10TB/trading/objects/' # 'D:/trading/objects/'
-LOAD_DATA_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/processed_data/df_numerai_build_2022-02-19.feather' # 'D:/trading/data/numerai/datasets/processed_data/df_numerai_build_2022-02-19.feather' # windows
+LOAD_DATA_FILEPATH = '/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/processed_data/' + max(os.listdir('/media/melgazar9/HDD_10TB/trading/data/numerai/datasets/processed_data/'))
 
 ### feature params ###
 
@@ -204,9 +204,22 @@ IAR_PARAMS = {'iar_cols': ['move_1d', 'high_move_1d', 'low_move_1d'], 'copy': Fa
 #                  subsample=0.7)
 #     ]
 
-ALGORITHM = Pipeline(steps=[
-    ('pca', PCA(n_components=150)),
-    ('model', XGBRegressor(colsample_bytree=0.8,
+# Need to fix RunModel class to parse Pipeline and get eval_set passed
+# ALGORITHM = Pipeline(steps=[
+#     ('pca', PCA(n_components=150)),
+#     ('model', XGBRegressor(colsample_bytree=0.8,
+#                          gamma=0.01,
+#                          learning_rate=0.05,
+#                          max_depth=5,
+#                          min_child_weight=1,
+#                          n_estimators=100,
+#                          n_jobs=NUM_WORKERS,
+#                          random_state=0,
+#                          subsample=0.7))
+#                      ])
+
+
+ALGORITHM = XGBRegressor(colsample_bytree=0.8,
                          gamma=0.01,
                          learning_rate=0.05,
                          max_depth=5,
@@ -214,8 +227,7 @@ ALGORITHM = Pipeline(steps=[
                          n_estimators=100,
                          n_jobs=NUM_WORKERS,
                          random_state=0,
-                         subsample=0.7))
-                     ])
+                         subsample=0.7)
 
 RUN_MODEL_PARAMS = {
     'copy': True,

@@ -90,7 +90,7 @@ basic_move_params = merge_dicts(
     }
 )
 
-# df_numerai = df_numerai.tail(100000) # for debugging
+# df_numerai = df_numerai.tail(300000)
 
 
 FEATURE_CREATOR_PIPE = Pipeline(
@@ -174,32 +174,29 @@ X_test, y_test = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][in
 
 gc.collect()
 
-
 ### Preprocessing ###
 
 start_feature_transformation = time.time()
+if VERBOSE: ('\nRunning feature transformations...\n')
 
-print('\nRunning feature transformations...\n')
 PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
-feature_transformer = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
-final_features = get_column_names_from_ColumnTransformer(feature_transformer)
-print('\nFeature transformation took {} minutes.\n'.format(round((time.time() - start_feature_transformation) / 60, 3)))
+prep_features_obj = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
 
-assert len([item for item, count in Counter(final_features).items() if count > 1]) == 0, 'final features has duplicate column names!'
+if VERBOSE: print('\nFeature transformation took {} minutes.\n'.format(round((time.time() - start_feature_transformation) / 60, 3)))
 
-X_train_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_train), columns=final_features, index=y_train.index))
-X_val_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_val), columns=final_features, index=y_val.index))
-X_test_transformed = clean_columns(pd.DataFrame(feature_transformer.transform(X_test), columns=final_features, index=y_test.index))
-X_transformed = clean_columns(pd.concat([X_train_transformed, X_val_transformed, X_test_transformed]))
+assert len([item for item, count in Counter(prep_features_obj.output_cols).items() if count > 1]) == 0, 'output_cols has duplicate column names!'
 
-final_features = X_train_transformed.columns
+X_train_transformed = prep_features_obj.transform(X_train).drop(prep_features_obj.feature_types['discarded_features'], axis=1).set_index(y_train.index)
+X_val_transformed = prep_features_obj.transform(X_val).drop(prep_features_obj.feature_types['discarded_features'], axis=1).set_index(y_val.index)
+X_test_transformed = prep_features_obj.transform(X_test).drop(prep_features_obj.feature_types['discarded_features'], axis=1).set_index(y_test.index)
+X_transformed = pd.concat([X_train_transformed, X_val_transformed, X_test_transformed])
 gc.collect()
 
 ### Train model ###
 
 start_model_training = time.time()
 model_obj = RunModel(X_test=X_transformed,
-                     features=final_features,
+                     features=list(X_transformed.columns),
                      X_train=X_train_transformed,
                      y_train=y_train,
                      algorithm=ALGORITHM,

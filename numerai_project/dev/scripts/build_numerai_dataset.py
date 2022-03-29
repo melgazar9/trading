@@ -36,6 +36,9 @@ config.read('numerai_project/numerai_keys.ini')
 
 napi = numerapi.SignalsAPI(config['KEYS']['NUMERAI_PUBLIC_KEY'], config['KEYS']['NUMERAI_SECRET_KEY'])
 
+if napi.HISTORICAL_DATA_URL != NUMERAI_TARGETS_URL or napi.HISTORICAL_DATA_URL != DOWNLOAD_VALID_TICKERS_PARAMS['numerai_ticker_link']:
+    warnings.warn("napi.HISTORICAL_DATA_URL is not equal to config set HISTORICAL_DATA_URL")
+
 ### Load eligible tickers ###
 
 ticker_map = download_ticker_map(napi, **DOWNLOAD_VALID_TICKERS_PARAMS)

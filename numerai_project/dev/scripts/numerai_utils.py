@@ -827,7 +827,7 @@ def plot_coef_scores(era_scores,
     return
 
 
-def calculate_fnc(sub, targets, features):
+def calc_fnc(sub, targets, features):
     """
     Args:
         sub (pd.Series)
@@ -837,7 +837,6 @@ def calculate_fnc(sub, targets, features):
 
     # Normalize submission
     sub = (sub.rank(method="first").values - 0.5) / len(sub)
-    convert_df_dtypes
     # Neutralize submission to features
     f = features.values
     sub -= f.dot(np.linalg.pinv(f).dot(sub))
@@ -850,16 +849,17 @@ def calculate_fnc(sub, targets, features):
     return fnc
 
 
+
+
+
 def download_ticker_map(napi,
-                        numerai_ticker_link='https://numerai-signals-public-data.s3-us-west-2.amazonaws.com/signals_ticker_map_w_bbg.csv',
+                        numerai_ticker_link,
                         main_ticker_col='bloomberg_ticker',
                         yahoo_ticker_colname='yahoo_ticker',
                         verbose=True):
 
     eligible_tickers = pd.Series(napi.ticker_universe(), name=yahoo_ticker_colname)
-
     ticker_map = pd.read_csv(numerai_ticker_link)
-
     ticker_map = ticker_map[ticker_map[main_ticker_col].isin(eligible_tickers)]
 
     if verbose:
