@@ -171,6 +171,7 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
 
 
 def get_column_names_from_ColumnTransformer(column_transformer, clean_column_names=False, verbose=True):
+
     """
     Reference: Kyle Gilde: https://github.com/kylegilde/Kaggle-Notebooks/blob/master/Extracting-and-Plotting-Scikit-Feature-Names-and-Importances/feature_importance.py
     Description: Get the column names from the a ColumnTransformer containing transformers & pipelines
@@ -194,6 +195,7 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
     new_feature_names, transformer_list = [], []
 
     for i, transformer_item in enumerate(column_transformer.transformers_):
+
         transformer_name, transformer, orig_feature_names = transformer_item
         orig_feature_names = list(orig_feature_names)
 
@@ -206,6 +208,7 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
 
         if transformer == 'drop':
             continue
+
         if transformer == 'passthrough':
             continue
 
@@ -218,6 +221,7 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
                 names = list(transformer.get_feature_names_out(orig_feature_names))
             else:
                 names = list(transformer.get_feature_names_out())
+
         elif hasattr(transformer, 'get_feature_names'):
             if 'input_features' in transformer.get_feature_names.__code__.co_varnames:
                 names = list(transformer.get_feature_names(orig_feature_names))
@@ -226,17 +230,14 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
 
         elif hasattr(transformer, 'indicator_') and transformer.add_indicator:
             # is this transformer one of the imputers & did it call the MissingIndicator?
-
             missing_indicator_indices = transformer.indicator_.features_
-            missing_indicators = [orig_feature_names[idx] + '_missing_flag' \
-                                  for idx in missing_indicator_indices]
+            missing_indicators = [orig_feature_names[idx] + '_missing_flag' for idx in missing_indicator_indices]
             names = orig_feature_names + missing_indicators
 
         elif hasattr(transformer, 'features_'):
             # is this a MissingIndicator class?
             missing_indicator_indices = transformer.features_
-            missing_indicators = [orig_feature_names[idx] + '_missing_flag' \
-                                  for idx in missing_indicator_indices]
+            missing_indicators = [orig_feature_names[idx] + '_missing_flag' for idx in missing_indicator_indices]
 
         else:
             names = orig_feature_names
@@ -248,8 +249,6 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
         new_feature_names.extend(names)
         transformer_list.extend([transformer_name] * len(names))
 
-    transformer_list, column_transformer_features = transformer_list, new_feature_names
-
     if clean_column_names:
         new_feature_names = list(clean_columns(pd.DataFrame(columns=new_feature_names)).columns)
 
@@ -257,6 +256,7 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
 
 
 class PreprocessFeatures(TransformerMixin):
+
     """
         Parameters
         ----------
@@ -309,7 +309,6 @@ class PreprocessFeatures(TransformerMixin):
         self.n_jobs = n_jobs
         self.verbose = verbose
         self.copy = copy
-
         self.preserve_vars = [] if self.preserve_vars is None else self.preserve_vars
         self.target = '' if self.target is None else self.target
 
@@ -333,9 +332,7 @@ class PreprocessFeatures(TransformerMixin):
         else:
             custom_features = []
 
-        assert len(
-            np.intersect1d(list(set(self.numeric_features + self.oh_features + self.hc_features + custom_features)),
-                           self.preserve_vars)) == 0, \
+        assert len(np.intersect1d(list(set(self.numeric_features + self.oh_features + self.hc_features + custom_features)), self.preserve_vars)) == 0, \
             'There are duplicate features in preserve_vars either the input numeric_features, oh_features, or hc_features'
 
         detected_numeric_vars = make_column_selector(dtype_include=np.number)(
@@ -348,8 +345,7 @@ class PreprocessFeatures(TransformerMixin):
             .loc[lambda x: x > self.max_oh_cardinality] \
             .index.tolist()
 
-        discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index if
-                              i not in self.preserve_vars]
+        discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index if i not in self.preserve_vars]
 
         numeric_features = list(set([i for i in self.numeric_features + [i for i in detected_numeric_vars if
                                                                          i not in list(self.oh_features) + list(
@@ -372,18 +368,19 @@ class PreprocessFeatures(TransformerMixin):
             print('Overlap between numeric oh_features and hc_features: ' + str(list(set(np.intersect1d(oh_features, hc_features)))))
             print('Overlap between oh_features and hc_features will be moved to oh_features')
 
+
         if self.overwrite_detection:
             numeric_features = [i for i in numeric_features if i not in oh_features + hc_features + discarded_features + custom_features]
             oh_features = [i for i in oh_features if i not in hc_features + numeric_features + discarded_features + custom_features]
             hc_features = [i for i in hc_features if i not in oh_features + numeric_features + discarded_features + custom_features]
+
         else:
             numeric_overlap = [i for i in numeric_features if i in oh_features or i in hc_features and i not in discarded_features + custom_features]
             oh_overlap = [i for i in oh_features if i in hc_features or i in numeric_features and i not in discarded_features + custom_features]
             hc_overlap = [i for i in hc_features if i in oh_features or i in numeric_features and i not in discarded_features + custom_features]
 
             if numeric_overlap or oh_overlap or hc_overlap:
-                raise (
-                    'Error - There is an overlap between numeric, oh, and hc features! To ignore this set overwrite_detection to True.')
+                raise AssertionError('There is an overlap between numeric, oh, and hc features! To ignore this set overwrite_detection to True.')
 
         all_features = list(set(numeric_features + oh_features + hc_features + discarded_features + custom_features))
         all_features_debug = set(all_features) - set([i for i in X.columns if i not in self.preserve_vars + [self.target]])
@@ -407,7 +404,8 @@ class PreprocessFeatures(TransformerMixin):
 
         return feature_dict
 
-    def fit(self, X, y=None, remainder='drop'):
+
+    def fit(self, X, y=None):
 
         if self.target is None and y is not None:
             self.target = y.name
@@ -471,7 +469,9 @@ class PreprocessFeatures(TransformerMixin):
         else:
             self.feature_transformer.fit(X, y)
 
+
         output_cols = get_column_names_from_ColumnTransformer(self.feature_transformer, verbose=self.verbose)
+
         if self.remainder == "passthrough":
             output_cols = output_cols + [X.columns[i] for i in self.feature_transformer._remainder[2]]
 
