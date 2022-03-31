@@ -57,6 +57,10 @@ if START_DATE:
 
 gc.collect()
 
+if 'data_type' in df_numerai.columns and USE_NUMERAI_TRAIN_TEST_SPLIT:
+    vc = df_numerai['data_type'].value_counts()
+    assert ('training' in vc.index or 'train' in vc.index) and ('val' in vc.index or 'validation' in vc.index)
+
 
 ###########################################
 ###### feature manipulation pipeline ######
@@ -90,13 +94,12 @@ basic_move_params = merge_dicts(
     }
 )
 
-# df_numerai = df_numerai.tail(300000)
-
+df_numerai = df_numerai.tail(300000)
 
 FEATURE_CREATOR_PIPE = Pipeline(
     steps=[
-        ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),\
-        ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET_COL, 'yahoo_ticker'], how='any'))),\
+        ('drop_null_yahoo_tickers', FunctionTransformer(lambda df: df.dropna(subset=['yahoo_ticker'], how='any'))),
+        ('dropna_targets', FunctionTransformer(lambda df: df.dropna(subset=[TARGET_COL, 'yahoo_ticker'], how='any'))),
         ('dropna_features', FunctionTransformer(lambda df: df.dropna(axis=1, how='all'))),
 
         ('calc_moves', FunctionTransformer(
@@ -116,7 +119,8 @@ FEATURE_CREATOR_PIPE = Pipeline(
                                         index_cols=[DATE_COL, TICKER_COL])))),
 
         ('calc_move_iar', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
-            lambda df: calc_move_iar(df, **IAR_PARAMS)))),\
+            lambda df: calc_move_iar(df, **IAR_PARAMS)))),
+
 
         # when calling rolling features below, it is difficult to parameterize this as part of the config because the above lagging features
         # pipeline creates features that we want to take rolling features for, which are not columns in the original df
@@ -127,11 +131,10 @@ FEATURE_CREATOR_PIPE = Pipeline(
                                               ewm_cols=[i for i in x.columns if 'move' in i])
         ))),
 
+
         # ('convert_dtypes', FunctionTransformer(lambda df: df.groupby(TICKER_COL, group_keys=False).parallel_apply(
         #     lambda df: convert_df_dtypes(df, **CONVERT_DTYPE_PARAMS))))
-
         # ('conditional_feature_dropna', FunctionTransformer(lambda df: drop_nas(df, **DROPNA_PARAMS))),\
-
         # ('sort_df', FunctionTransformer(lambda df: df.sort_values(by=[DATE_COL, TICKER_COL]))) # has to be outside of the pipeline
         ]
     )
@@ -143,43 +146,60 @@ input_df = df_numerai.copy()
 
 start_feature_creation = time.time()
 
-print('\nRunning feature creation...\n')
+if VERBOSE: print('\nRunning feature creation...\n')
 
 FEATURE_CREATOR_PIPE.steps = list(dict(FEATURE_CREATOR_PIPE.steps).items()) # just in case there is a user error containing duplicated transformation steps
 feature_creator = FEATURE_CREATOR_PIPE.fit(df_numerai)
 df_numerai = feature_creator.transform(df_numerai)
-print('\nFeature creation took {} minutes.\n'.format(round((time.time() - start_feature_creation) / 60, 3)))
+
+if VERBOSE: ('\nFeature creation took {} minutes.\n'.format(round((time.time() - start_feature_creation) / 60, 3)))
 
 gc.collect()
 
 if DROP_INIT_ROLLING_WINDOW_ROWS:
     df_numerai = df_numerai[df_numerai[DATE_COL] >= df_numerai[DATE_COL].min() + datetime.timedelta(ROLLING_FEATURES_PARAMS['rolling_params']['window'])]
 
+
 ### Timeseries Split ###
 
 df_numerai = df_numerai.groupby([TICKER_COL]).apply(lambda df: timeseries_split(df, **TIMESERIES_SPLIT_PARAMS))
 
 if 'data_type' in df_numerai.columns and USE_NUMERAI_TRAIN_TEST_SPLIT:
-    # use numerai train/val/test rows
-    df_numerai.loc[(df_numerai['dataset_split'] == 'train') & (df_numerai['data_type'] == 'validation'), 'dataset_split'] = 'val'
-    df_numerai.loc[(df_numerai['dataset_split'] == 'val') & (df_numerai['data_type'] == 'train'), 'dataset_split'] = 'train'
+    df_numerai.loc[(df_numerai[SPLIT_COLNAME] == 'train') & (df_numerai['data_type'] == 'validation'), SPLIT_COLNAME] = 'val'
+    df_numerai.loc[(df_numerai[SPLIT_COLNAME] == 'val') & (df_numerai['data_type'] == 'train'), SPLIT_COLNAME] = 'train'
 
 input_features = eval(INPUT_FEATURES_STRING)
 preserve_vars = list(set(PRESERVE_VARS + eval(PRESERVE_VARS_STRING)))
 drop_vars = eval(DROP_VARS_STRING)
 
-X_train, y_train = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][TARGET_COL]
-X_val, y_val = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][TARGET_COL]
-X_test, y_test = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][input_features], df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][TARGET_COL]
+if TRAIN_ON_FULL_DATA:
+    df_numerai.loc[df_numerai[SPLIT_COLNAME] == 'val', SPLIT_COLNAME] = 'train'
+    df_numerai.loc[df_numerai[SPLIT_COLNAME] == 'test', SPLIT_COLNAME] = 'train'
+    X_train, y_train = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][input_features], \
+                       df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][TARGET_COL]
+    X_val, y_val = X_train, y_train
+else:
+    X_train, y_train = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][input_features], \
+                       df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('train')][TARGET_COL]
+
+    X_val, y_val = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][input_features], \
+                   df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('val')][TARGET_COL]
+
+    # X_test, y_test = df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][input_features], \
+    #                  df_numerai[df_numerai[SPLIT_COLNAME].str.startswith('test')][TARGET_COL]
+
 
 gc.collect()
+
 
 ### Preprocessing ###
 
 start_feature_transformation = time.time()
+
 if VERBOSE: ('\nRunning feature transformations...\n')
 
 PREPROCESS_FEATURES_PARAMS['preserve_vars'] = preserve_vars
+
 prep_features_obj = PreprocessFeatures(**PREPROCESS_FEATURES_PARAMS).fit(X_train, y_train)
 
 if VERBOSE: print('\nFeature transformation took {} minutes.\n'.format(round((time.time() - start_feature_transformation) / 60, 3)))
@@ -187,10 +207,18 @@ if VERBOSE: print('\nFeature transformation took {} minutes.\n'.format(round((ti
 assert len([item for item, count in Counter(prep_features_obj.output_cols).items() if count > 1]) == 0, 'output_cols has duplicate column names!'
 
 X_train_transformed = prep_features_obj.transform(X_train).drop(prep_features_obj.feature_types['discarded_features'], axis=1).set_index(y_train.index)
-X_val_transformed = prep_features_obj.transform(X_val).drop(prep_features_obj.feature_types['discarded_features'], axis=1).set_index(y_val.index)
-X_test_transformed = prep_features_obj.transform(X_test).drop(prep_features_obj.feature_types['discarded_features'], axis=1).set_index(y_test.index)
-X_transformed = pd.concat([X_train_transformed, X_val_transformed, X_test_transformed])
+
+if TRAIN_ON_FULL_DATA:
+    X_transformed = X_train_transformed
+    X_val_transformed = X_train_transformed
+
+else:
+    X_transformed = pd.concat([X_train_transformed, X_val_transformed, X_test_transformed])
+    X_val_transformed = prep_features_obj.transform(X_val).drop(prep_features_obj.feature_types['discarded_features'], axis=1).set_index(y_val.index)
+    # X_test_transformed = prep_features_obj.transform(X_test).drop(prep_features_obj.feature_types['discarded_features'], axis=1).set_index(y_test.index)
+
 gc.collect()
+
 
 ### Train model ###
 
@@ -204,7 +232,7 @@ model_obj = RunModel(X_test=X_transformed,
                      df_full=df_numerai,
                      **RUN_MODEL_PARAMS).train_and_predict()
 
-print(f"\nModel training took {round((time.time() - start_model_training) / 60, 3)} minutes.\n")
+if VERBOSE: print(f"\nModel training took {round((time.time() - start_model_training) / 60, 3)} minutes.\n")
 
 model_obj['input_df'] = input_df
 del input_df
@@ -212,14 +240,17 @@ del input_df
 model_obj['feature_creator'] = feature_creator
 del feature_creator
 
-model_obj['feature_transformer'] = feature_transformer
-del feature_transformer
+model_obj['feature_transformer'] = prep_features_obj
+model_obj['final_features'] = prep_features_obj.output_cols
+del prep_features_obj
+
 
 model_obj['input_features'] = input_features
-model_obj['final_features'] = final_features
 model_obj['final_dtype_mapping'] = model_obj['df_pred'].dtypes.to_dict()
 model_obj['dropped_features'] = drop_vars
+
 gc.collect()
+
 
 if SAVE_OBJECT:
     save_start_time = time.time()
@@ -230,6 +261,7 @@ if SAVE_OBJECT:
                                    .replace(' ', '_')\
                                    .replace(':', '_') + '.pkl',\
                                'wb'))
+
     save_end_time = time.time()
     print("\nIt took %s minutes to save the object\n" % round((save_end_time - save_start_time) / 60, 3))
 
