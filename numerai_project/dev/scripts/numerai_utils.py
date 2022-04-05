@@ -9,6 +9,8 @@ import warnings
 import dask
 from dask import delayed
 from skimpy import clean_columns
+import time
+
 
 class DataValidator():
 
@@ -322,7 +324,6 @@ class CalcMoves(DataValidator):
 
         super().__init__(df) # initialize DataValidator with df as the input
         self.validate_data()
-
         return df
 
 
@@ -396,7 +397,6 @@ def calc_diffs(df, diff_cols, diff_suffix='_diff', index_cols=None, reset_index=
     pandas df
     """
 
-
     if copy: df = df.copy()
     if index_cols is None:
         df[[i + diff_suffix for i in diff_cols]] = df[diff_cols].diff()
@@ -412,6 +412,7 @@ def calc_diffs(df, diff_cols, diff_suffix='_diff', index_cols=None, reset_index=
             df.reset_index(inplace=True)
             if 'index' in df.columns:
                 df.drop('index', axis=1, inplace=True)
+
     DataValidator(df).validate_data()
     return df
 
@@ -436,6 +437,7 @@ def calc_pct_changes(df, pct_change_cols, pct_change_suffix='_pct_change', epsil
     pandas df
 
     """
+
     if copy: df = df.copy()
 
     if index_cols is None:
@@ -464,6 +466,7 @@ def calc_pct_changes(df, pct_change_cols, pct_change_suffix='_pct_change', epsil
                 df.drop('index', axis=1, inplace=True)
 
     DataValidator(df).validate_data()
+
     return df
 
 
@@ -724,6 +727,7 @@ def calc_move_iar(df, iar_cols, iar_suffix='_iar', copy=False):
     df[new_iar_cols] = upmove_iar.fillna(downmove_iar).ffill()
 
     DataValidator(df).validate_data()
+
     return df
 
 def calc_trend(df, iar_cols, iar_suffix='_iar', trend_suffix='_trend', flat_threshold=0.005, copy=False):

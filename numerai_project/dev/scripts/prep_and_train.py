@@ -10,11 +10,11 @@ if not os.getcwd().endswith('trading'): os.chdir('../../..') # local machine
 assert os.getcwd().endswith('trading'), 'Wrong path!'
 import numerapi
 from collections import Counter
-from skimpy import clean_columns
-
 from pandarallel import pandarallel  # parallel pandas
+
 import platform
 import time
+
 sys.path.append(os.getcwd())
 
 from dev.scripts.ML_utils import * # run if on local machine
@@ -94,7 +94,7 @@ basic_move_params = merge_dicts(
     }
 )
 
-# df_numerai = df_numerai.tail(300000)
+# df_numerai = df_numerai.tail(300000) # for debugging purposes
 
 FEATURE_CREATOR_PIPE = Pipeline(
     steps=[
