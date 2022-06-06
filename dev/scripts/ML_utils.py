@@ -255,6 +255,33 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
     return new_feature_names
 
 
+from sklearn.base import TransformerMixin
+
+from sklearn.pipeline import Pipeline, make_pipeline
+from sklearn.impute import SimpleImputer
+from sklearn.compose import ColumnTransformer
+import numpy as np
+import pandas as pd
+from sklearn.preprocessing import (
+    MinMaxScaler,
+    StandardScaler,
+    FunctionTransformer,
+    OneHotEncoder
+)
+from ml_sys_objects.feature_groups import *
+from utils.util_functions import *
+
+import xgboost as xgb
+from category_encoders import TargetEncoder
+
+from sklearn.compose import make_column_selector
+from sklearn.utils.validation import check_is_fitted
+
+
+def ds_print(*args, verbose=True):
+    if verbose: print(*args)
+
+
 class PreprocessFeatures(TransformerMixin):
 
     """
@@ -332,7 +359,11 @@ class PreprocessFeatures(TransformerMixin):
         else:
             custom_features = []
 
-        assert len(np.intersect1d(list(set(self.numeric_features + self.oh_features + self.hc_features + custom_features)), self.preserve_vars)) == 0, \
+        assert len(np.intersect1d(list(set(self.numeric_features + \
+                                           self.oh_features + \
+                                           self.hc_features + \
+                                           custom_features)), \
+                                  self.preserve_vars)) == 0, \
             'There are duplicate features in preserve_vars either the input numeric_features, oh_features, or hc_features'
 
         detected_numeric_vars = make_column_selector(dtype_include=np.number)(
@@ -363,31 +394,62 @@ class PreprocessFeatures(TransformerMixin):
                                                                    discarded_features) + custom_features]]))
 
         if self.verbose:
-            print('Overlap between numeric and oh_features: ' + str(list(set(np.intersect1d(numeric_features, oh_features)))))
-            print('Overlap between numeric and hc_features: ' + str(list(set(np.intersect1d(numeric_features, hc_features)))))
-            print('Overlap between numeric oh_features and hc_features: ' + str(list(set(np.intersect1d(oh_features, hc_features)))))
+            print('Overlap between numeric and oh_features: ' + \
+                  str(list(set(np.intersect1d(numeric_features, oh_features)))))
+            print('Overlap between numeric and hc_features: ' + \
+                  str(list(set(np.intersect1d(numeric_features, hc_features)))))
+            print('Overlap between numeric oh_features and hc_features: ' + \
+                  str(list(set(np.intersect1d(oh_features, hc_features)))))
             print('Overlap between oh_features and hc_features will be moved to oh_features')
 
 
         if self.overwrite_detection:
-            numeric_features = [i for i in numeric_features if i not in oh_features + hc_features + discarded_features + custom_features]
-            oh_features = [i for i in oh_features if i not in hc_features + numeric_features + discarded_features + custom_features]
-            hc_features = [i for i in hc_features if i not in oh_features + numeric_features + discarded_features + custom_features]
+            numeric_features = [i for i in numeric_features \
+                                if i not in oh_features + \
+                                hc_features + \
+                                discarded_features + \
+                                custom_features]
+            oh_features = [i for i in oh_features \
+                           if i not in hc_features + \
+                           numeric_features + \
+                           discarded_features + \
+                           custom_features]
+            hc_features = [i for i in hc_features if i not in \
+                           oh_features + numeric_features + discarded_features + custom_features]
 
         else:
-            numeric_overlap = [i for i in numeric_features if i in oh_features or i in hc_features and i not in discarded_features + custom_features]
-            oh_overlap = [i for i in oh_features if i in hc_features or i in numeric_features and i not in discarded_features + custom_features]
-            hc_overlap = [i for i in hc_features if i in oh_features or i in numeric_features and i not in discarded_features + custom_features]
+            numeric_overlap = [i for i in numeric_features \
+                               if i in oh_features \
+                               or i in hc_features \
+                               and i not in discarded_features + custom_features]
+            oh_overlap = [i for i in oh_features \
+                          if i in hc_features \
+                          or i in numeric_features \
+                          and i not in discarded_features + custom_features]
+            hc_overlap = [i for i in hc_features \
+                          if i in oh_features \
+                          or i in numeric_features \
+                          and i not in discarded_features + custom_features]
 
             if numeric_overlap or oh_overlap or hc_overlap:
-                raise AssertionError('There is an overlap between numeric, oh, and hc features! To ignore this set overwrite_detection to True.')
+                raise AssertionError('There is an overlap between numeric, \
+                                     oh, and hc features! \
+                                     To ignore this set overwrite_detection to True.')
 
-        all_features = list(set(numeric_features + oh_features + hc_features + discarded_features + custom_features))
-        all_features_debug = set(all_features) - set([i for i in X.columns if i not in self.preserve_vars + [self.target]])
+        all_features = list(set(numeric_features + \
+                                oh_features + \
+                                hc_features + \
+                                discarded_features + \
+                                custom_features))
+        all_features_debug = set(all_features) - \
+            set([i for i in X.columns \
+                 if i not in \
+                 self.preserve_vars + [self.target]])
 
         if len(all_features_debug) > 0:
             print('\n{}\n'.format(all_features_debug))
-            raise AssertionError('There was a problem detecting all features!! Check if there is an overlap between preserve_vars and other custom input features')
+            raise AssertionError('There was a problem detecting all features!! \
+                Check if there is an overlap between preserve_vars and other custom input features')
 
         if self.verbose:
             print('\nnumeric_features:' + str(numeric_features))
@@ -410,7 +472,7 @@ class PreprocessFeatures(TransformerMixin):
         if self.target is None and y is not None:
             self.target = y.name
 
-        assert y is not None and self.target is not None, '\n Both self.target and y cannot be None!'
+        assert y is not None or self.target is not None, '\n Both self.target and y cannot be None!'
 
         if self.copy:
             X = X.copy()
@@ -488,6 +550,7 @@ class PreprocessFeatures(TransformerMixin):
             return pd.DataFrame(list(X_out), columns=self.output_cols)
         else:
             return X_out
+
 
 
 class FeatureImportance:
