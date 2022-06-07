@@ -85,7 +85,6 @@ def parallize_pandas_func(df, df_attribute, parallelize_by_col=True, num_workers
         return df_out
 
 
-
 def get_column_names_from_ColumnTransformer(column_transformer, clean_column_names=False, verbose=True):
 
     """
@@ -169,30 +168,6 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
         new_feature_names = list(clean_columns(pd.DataFrame(columns=new_feature_names)).columns)
 
     return new_feature_names
-
-
-from sklearn.base import TransformerMixin
-
-from sklearn.pipeline import Pipeline, make_pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-import numpy as np
-import pandas as pd
-from sklearn.preprocessing import (
-    MinMaxScaler,
-    StandardScaler,
-    FunctionTransformer,
-    OneHotEncoder
-)
-from ml_sys_objects.feature_groups import *
-from utils.util_functions import *
-
-import xgboost as xgb
-from category_encoders import TargetEncoder
-
-from sklearn.compose import make_column_selector
-from sklearn.utils.validation import check_is_fitted
-
 
 def ds_print(*args, verbose=True):
     if verbose: print(*args)
