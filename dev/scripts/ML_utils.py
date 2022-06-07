@@ -429,7 +429,7 @@ class PreprocessFeatures(TransformerMixin):
             output_cols = output_cols + [X.columns[i] for i in self.feature_transformer._remainder[2]]
 
         setattr(self, 'output_cols', output_cols)
-        setattr(self, 'output_features', [i for i in output_cols if i not in self.preserve_vars + [self.target]]
+        setattr(self, 'output_features', [i for i in output_cols if i not in self.preserve_vars + [self.target]])
         setattr(self, 'feature_types', feature_types)
 
         return self
