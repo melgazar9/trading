@@ -859,7 +859,7 @@ def calc_fnc(sub, targets, features):
 def download_ticker_map(napi,
                         numerai_ticker_link,
                         main_ticker_col='bloomberg_ticker',
-                        yahoo_ticker_colname='yahoo_ticker',
+                        yahoo_ticker_colname='yahoo',
                         verbose=True):
 
     eligible_tickers = pd.Series(napi.ticker_universe(), name=yahoo_ticker_colname)
@@ -871,7 +871,7 @@ def download_ticker_map(napi,
         print(f"Number of eligible tickers in map: {len(ticker_map)}")
 
     # Remove null / empty tickers from the yahoo tickers
-    valid_tickers = [i for i in ticker_map['yahoo']
+    valid_tickers = [i for i in ticker_map[yahoo_ticker_colname]
                      if not pd.isnull(i)
                      and not str(i).lower() == 'nan' \
                      and not str(i).lower() == 'null' \
@@ -881,7 +881,7 @@ def download_ticker_map(napi,
                      ]
 
     if verbose: print('tickers before cleaning:', ticker_map.shape)  # before removing bad tickers
-    ticker_map = ticker_map[ticker_map['yahoo'].isin(valid_tickers)]
+    ticker_map = ticker_map[ticker_map[yahoo_ticker_colname].isin(valid_tickers)]
     if verbose: print('tickers after cleaning:', ticker_map.shape)
 
     return ticker_map

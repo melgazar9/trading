@@ -45,13 +45,13 @@ ticker_map = download_ticker_map(napi, **DOWNLOAD_VALID_TICKERS_PARAMS)
 
 if APPEND_OLD_DATA:
     # load in data
-    if OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('pq') or OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith(
-            'parquet'):
+    if OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('pq') or OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('parquet'):
         df_numerai_old = dd.read_parquet(OLD_FULL_NUMERAI_BUILD_FILEPATH, DASK_NPARTITIONS=DASK_NPARTITIONS).compute()
     elif OLD_FULL_NUMERAI_BUILD_FILEPATH.lower().endswith('feather'):
         df_numerai_old = pd.read_feather(OLD_FULL_NUMERAI_BUILD_FILEPATH)
 
     DOWNLOAD_YFINANCE_DATA_PARAMS['yfinance_params']['start'] = str(df_numerai_old[DATETIME_COL].max().date())
+
     df_numerai_old.set_index([TICKER_COL, DATETIME_COL], inplace=True)
 
 
@@ -259,11 +259,12 @@ if APPEND_OLD_DATA:
     assert(len(datetime_ticker_cat_final) == len(set(datetime_ticker_cat_final))), 'The final output index is not unique!'
     del datetime_ticker_cat_final
 
+
 ### Save df ###
 
-if VERBOSE: print('\nsaving df build...\n')
-
 gc.collect()
+
+if VERBOSE: print('\nsaving df build...\n')
 
 if FINAL_SAVE_FILEPATH.endswith('feather'):
     if 'date' in df_yahoo.index.names or YAHOO_TICKER_COL in df_yahoo.index.names:

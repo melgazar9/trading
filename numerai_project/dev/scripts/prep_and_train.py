@@ -206,17 +206,12 @@ if VERBOSE: print('\nFeature transformation took {} minutes.\n'.format(round((ti
 
 assert len([item for item, count in Counter(feature_transformer.output_cols).items() if count > 1]) == 0, 'output_cols has duplicate column names!'
 
-X_train_transformed = feature_transformer.transform(X_train)\
-    .drop(feature_transformer.feature_types['discarded_features'], axis=1)\
-    .set_index(y_train.index)
-
-final_features = [i for i in X_train_transformed.columns if i not in PRESERVE_VARS]
-
-X_train_transformed = X_train_transformed[final_features]
+X_train_transformed = feature_transformer.transform(X_train)[feature_transformer.final_features]
 
 if TRAIN_ON_FULL_DATA:
     X_transformed = X_train_transformed[final_features]
     X_val_transformed = X_train_transformed[final_features]
+
 else:
     X_transformed = pd.concat([X_train_transformed, X_val_transformed, X_test_transformed])[final_features]
     X_val_transformed = feature_transformer.transform(X_val).set_index(y_val.index)[final_features]
@@ -228,6 +223,7 @@ gc.collect()
 ### Train model ###
 
 start_model_training = time.time()
+
 model_obj = RunModel(X_test=X_transformed,
                      features=list(X_transformed.columns),
                      X_train=X_train_transformed,
@@ -235,7 +231,8 @@ model_obj = RunModel(X_test=X_transformed,
                      algorithm=ALGORITHM,
                      eval_set=[(X_val_transformed, y_val)],
                      df_full=df_numerai,
-                     **RUN_MODEL_PARAMS).train_and_predict()
+                     **RUN_MODEL_PARAMS)\
+    .train_and_predict()
 
 if VERBOSE: print(f"\nModel training took {round((time.time() - start_model_training) / 60, 3)} minutes.\n")
 
