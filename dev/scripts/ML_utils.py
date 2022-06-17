@@ -8,7 +8,6 @@ import os
 import time
 import json
 import pandas as pd
-import dask.dataframe as dd
 from dask import delayed
 import dask
 import numpy as np
@@ -16,7 +15,7 @@ import gc
 import datetime
 from pandas.io.json import json_normalize
 import itertools
-import dill # better than pickle
+import dill
 import warnings
 import subprocess
 import sys
@@ -37,11 +36,33 @@ from sklearn.preprocessing import FunctionTransformer, OrdinalEncoder, LabelEnco
 from sklearn.base import TransformerMixin
 from feature_engine.outliers import Winsorizer, ArbitraryOutlierCapper#, OutlierTrimmer
 from imblearn.over_sampling import SMOTE, ADASYN, RandomOverSampler, KMeansSMOTE, SMOTENC, SVMSMOTE, BorderlineSMOTE
-from imblearn.under_sampling import RandomUnderSampler, EditedNearestNeighbours, TomekLinks, AllKNN, \
-     ClusterCentroids, CondensedNearestNeighbour, InstanceHardnessThreshold, NearMiss, OneSidedSelection
-from sklearn.metrics import mean_squared_error, mean_absolute_error, mean_squared_log_error, \
-     accuracy_score, precision_score, recall_score, r2_score
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier, StackingRegressor, StackingClassifier, AdaBoostClassifier, AdaBoostRegressor, HistGradientBoostingClassifier, HistGradientBoostingRegressor
+from imblearn.under_sampling import (
+     RandomUnderSampler,
+     EditedNearestNeighbours,
+     TomekLinks,
+     AllKNN,
+     ClusterCentroids,
+     CondensedNearestNeighbour,
+     InstanceHardnessThreshold,
+     NearMiss,
+     OneSidedSelection)
+from sklearn.metrics import (
+     mean_squared_error,
+     mean_absolute_error,
+     mean_squared_log_error,
+     accuracy_score,
+     precision_score,
+     recall_score,
+     r2_score)
+from sklearn.ensemble import (
+     RandomForestRegressor,
+     RandomForestClassifier,
+     StackingRegressor,
+     StackingClassifier,AdaBoostClassifier,
+     AdaBoostRegressor,
+     HistGradientBoostingClassifier,
+     HistGradientBoostingRegressor)
+from sklearn.decomposition import PCA, TruncatedSVD
 from catboost import CatBoostRegressor, CatBoostClassifier, Pool
 from xgboost import XGBRegressor, XGBClassifier
 import pymysql
@@ -58,9 +79,8 @@ from functools import partial
 import inspect
 from sklearn.utils.validation import check_is_fitted
 import sklearn
-import dask.dataframe as dd
 import feather
-from sklearn.decomposition import PCA, TruncatedSVD
+
 
 def parallize_pandas_func(df, df_attribute, parallelize_by_col=True, num_workers=mp.cpu_count(), **kwargs):
     """ parallelize by row not implemented yet """
