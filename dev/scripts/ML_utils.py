@@ -257,7 +257,7 @@ class PreprocessFeatures(TransformerMixin):
         if self.copy: X = X.copy()
 
         if not self.detect_dtypes:
-            if verbose: print('Not detecting dtypes.')
+            if self.verbose: print('Not detecting dtypes.')
 
             feature_dict = {'numeric_features': self.numeric_features,
                             'oh_features': self.oh_features,
