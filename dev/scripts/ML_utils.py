@@ -258,11 +258,12 @@ class PreprocessFeatures(TransformerMixin):
 
         if not self.detect_dtypes:
             if self.verbose: print('Not detecting dtypes.')
-
+  
             feature_dict = {'numeric_features': self.numeric_features,
                             'oh_features': self.oh_features,
-                            'hc_features': self.hc_features,
-                            'custom_features': self.FE_pipeline_dict['custom_pipeline'].values()}
+                            'hc_features': self.hc_features}
+            if 'custom_pipeline' in FE_pipeline_dict.keys():
+                feature_dict['custom_pipeline'] = self.FE_pipeline_dict['custom_pipeline'].values()
             return feature_dict
 
         if self.FE_pipeline_dict is not None and 'custom_pipeline' in self.FE_pipeline_dict.keys():
