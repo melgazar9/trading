@@ -10,7 +10,7 @@ import dask
 from dask import delayed
 from skimpy import clean_columns
 import time
-
+from pandas.api.types import is_datetime64_any_dtype as is_datetime
 
 class DataValidator():
 
