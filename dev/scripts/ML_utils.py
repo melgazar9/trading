@@ -276,36 +276,55 @@ class PreprocessFeatures(TransformerMixin):
                                            self.hc_features + \
                                            custom_features)), \
                                   self.preserve_vars)) == 0, \
-            'There are duplicate features in preserve_vars either the input numeric_features, oh_features, or hc_features'
+            'There are duplicate features in preserve_vars either the input\
+             numeric_features, oh_features, or hc_features'
 
         detected_numeric_vars = make_column_selector(dtype_include=np.number)(
-            X[[i for i in X.columns if i not in self.preserve_vars + [self.target] + custom_features]])
-        detected_oh_vars = [i for i in X.loc[:, (X.nunique() < self.max_oh_cardinality) & (X.nunique() > 1)].columns if
-                            i not in self.preserve_vars + [self.target] + custom_features]
-        detected_hc_vars = X[[i for i in X.columns if i not in self.preserve_vars + custom_features]] \
+            X[[i for i in X.columns \
+               if i not in self.preserve_vars + \
+               [self.target] + \
+               custom_features]])
+        
+        detected_oh_vars = [i for i in X.loc[:, (X.nunique() <= self.max_oh_cardinality) & \
+                                             (X.nunique() > 1)].columns \
+                            if i not in self.preserve_vars + \
+                            [self.target] + \
+                            custom_features]
+        
+        detected_hc_vars = X[[i for i in X.columns \
+                              if i not in self.preserve_vars + \
+                              custom_features]] \
             .select_dtypes(['object', 'category']) \
             .apply(lambda col: col.nunique()) \
             .loc[lambda x: x > self.max_oh_cardinality] \
             .index.tolist()
 
-        discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index if i not in self.preserve_vars]
+        discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index \
+                              if i not in self.preserve_vars]
 
-        numeric_features = list(set([i for i in self.numeric_features + [i for i in detected_numeric_vars if
-                                                                         i not in list(self.oh_features) + list(
-                                                                             self.hc_features) + list(
-                                                                             discarded_features) + custom_features]]))
+        numeric_features = list(set([i for i in self.numeric_features + \
+                                     [i for i in detected_numeric_vars \
+                                      if i not in list(self.oh_features) + \
+                                      list(self.hc_features) + \
+                                      list(discarded_features) + \
+                                      custom_features]]))
 
-        oh_features = list(set([i for i in self.oh_features + [i for i in detected_oh_vars if
-                                                               i not in list(self.numeric_features) + list(
-                                                                   self.hc_features) + list(
-                                                                   discarded_features) + custom_features]]))
+        oh_features = list(set([i for i in self.oh_features + \
+                                [i for i in detected_oh_vars \
+                                 if i not in list(self.numeric_features) + \
+                                 list(self.hc_features) + \
+                                 list(discarded_features) + \
+                                 custom_features]]))
 
-        hc_features = list(set([i for i in self.hc_features + [i for i in detected_hc_vars if
-                                                               i not in list(self.numeric_features) + list(
-                                                                   self.oh_features) + list(
-                                                                   discarded_features) + custom_features]]))
+        hc_features = list(set([i for i in self.hc_features + \
+                                [i for i in detected_hc_vars \
+                                 if i not in list(self.numeric_features) + \
+                                 list(self.oh_features) + \
+                                 list(discarded_features) + \
+                                 custom_features]]))
 
         if self.verbose:
+            
             print('Overlap between numeric and oh_features: ' + \
                   str(list(set(np.intersect1d(numeric_features, oh_features)))))
             print('Overlap between numeric and hc_features: ' + \
@@ -321,29 +340,40 @@ class PreprocessFeatures(TransformerMixin):
                                 hc_features + \
                                 discarded_features + \
                                 custom_features]
+            
             oh_features = [i for i in oh_features \
                            if i not in hc_features + \
                            numeric_features + \
                            discarded_features + \
                            custom_features]
+            
             hc_features = [i for i in hc_features if i not in \
-                           oh_features + numeric_features + discarded_features + custom_features]
+                           oh_features + \
+                           numeric_features + \
+                           discarded_features + \
+                           custom_features]
 
         else:
             numeric_overlap = [i for i in numeric_features \
                                if i in oh_features \
                                or i in hc_features \
-                               and i not in discarded_features + custom_features]
+                               and i not in discarded_features + \
+                               custom_features]
+            
             oh_overlap = [i for i in oh_features \
                           if i in hc_features \
                           or i in numeric_features \
-                          and i not in discarded_features + custom_features]
+                          and i not in discarded_features + \
+                          custom_features]
+            
             hc_overlap = [i for i in hc_features \
                           if i in oh_features \
                           or i in numeric_features \
-                          and i not in discarded_features + custom_features]
+                          and i not in discarded_features + \
+                          custom_features]
 
             if numeric_overlap or oh_overlap or hc_overlap:
+                
                 raise AssertionError('There is an overlap between numeric, \
                                      oh, and hc features! \
                                      To ignore this set overwrite_detection to True.')
@@ -353,6 +383,7 @@ class PreprocessFeatures(TransformerMixin):
                                 hc_features + \
                                 discarded_features + \
                                 custom_features))
+        
         all_features_debug = set(all_features) - \
             set([i for i in X.columns \
                  if i not in \
@@ -422,7 +453,9 @@ class PreprocessFeatures(TransformerMixin):
             hc_pipe = self.FE_pipeline_dict['hc_pipe']
             numeric_pipe = self.FE_pipeline_dict['numeric_pipe']
             oh_pipe = self.FE_pipeline_dict['oh_pipe']
-            custom_pipe = self.FE_pipeline_dict['custom_pipeline'] if 'custom_pipeline' in self.FE_pipeline_dict.keys() else {}
+            
+            custom_pipe = self.FE_pipeline_dict['custom_pipeline'] \
+                if 'custom_pipeline' in self.FE_pipeline_dict.keys() else {}
 
         transformers = [
             ('hc_pipeline', hc_pipe, feature_types['hc_features']),
