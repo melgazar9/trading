@@ -891,6 +891,9 @@ def create_datetime_features(df, datetime_col, include_hour=True, make_copy=Fals
 
     if make_copy: df = df.copy()
 
+    if not is_datetime(df[datetime_col]):
+        df[datetime_col] = pd.to_datetime(df[datetime_col])
+        
     if include_hour: df.loc[:, 'hour'] = df[datetime_col].dt.hour
 
     df.loc[:, 'day'] = df[datetime_col].dt.isocalendar().day
@@ -903,6 +906,9 @@ def create_datetime_features(df, datetime_col, include_hour=True, make_copy=Fals
     df.loc[:, 'is_month_end'] = df[datetime_col].dt.is_month_end
     df.loc[:, 'is_quarter_start'] = df[datetime_col].dt.is_quarter_start
     df.loc[:, 'is_quarter_end'] = df[datetime_col].dt.is_quarter_end
+    
     holidays = calendar().holidays(start=df[datetime_col].min(), end=df[datetime_col].max())
+    
     df.loc[:, 'is_holiday'] = df[datetime_col].isin(holidays)
+    
     return df
