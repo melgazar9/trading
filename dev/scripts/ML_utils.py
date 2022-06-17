@@ -262,7 +262,7 @@ class PreprocessFeatures(TransformerMixin):
             feature_dict = {'numeric_features': self.numeric_features,
                             'oh_features': self.oh_features,
                             'hc_features': self.hc_features}
-            if 'custom_pipeline' in FE_pipeline_dict.keys():
+            if 'custom_pipeline' in self.FE_pipeline_dict.keys():
                 feature_dict['custom_pipeline'] = self.FE_pipeline_dict['custom_pipeline'].values()
             return feature_dict
 
