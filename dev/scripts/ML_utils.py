@@ -141,10 +141,7 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
             print(f"\n\n{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}\n")
             print(f"\tn_orig_feature_names:{len(orig_feature_names)}")
 
-        if transformer == 'drop':
-            continue
-
-        if transformer == 'passthrough':
+        if transformer == 'drop' or transformer == 'passthrough':
             continue
 
         if isinstance(transformer, Pipeline):
