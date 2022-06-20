@@ -49,7 +49,7 @@ defer==1.0.6
 defusedxml==0.7.1
 deprecation==2.1.0
 dill==0.3.4
-distributed==2022.6.0
+distributed==2021.10.0
 distro==1.4.0
 distro-info===0.23ubuntu1
 duplicity==0.8.12.0
