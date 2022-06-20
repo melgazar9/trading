@@ -1165,6 +1165,8 @@ def timeseries_split(df,
 
         return X_train, y_train, X_val, y_val, X_test, y_test
 
+def find_list_duplicates(input_list):
+    return [item for item, count in Counter(input_list).items() if count > 1]
 
 def merge_dicts(*dict_args):
     """
