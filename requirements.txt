@@ -38,7 +38,7 @@ commonmark==0.9.1
 cryptography==2.8
 cupshelpers==1.0
 cycler==0.11.0
-dask==2022.6.0
+dask==2021.10.0
 dask-glm==0.2.0
 dask-ml==2022.1.22
 dbus-python==1.2.16
