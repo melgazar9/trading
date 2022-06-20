@@ -259,12 +259,12 @@ class PreprocessFeatures(TransformerMixin):
             feature_dict = {'numeric_features': self.numeric_features,
                             'oh_features': self.oh_features,
                             'hc_features': self.hc_features}
-            if 'custom_pipeline' in self.FE_pipeline_dict.keys():
-                feature_dict['custom_pipeline'] = self.FE_pipeline_dict['custom_pipeline'].values()
+            if 'custom_pipe' in self.FE_pipeline_dict.keys():
+                feature_dict['custom_pipe'] = self.FE_pipeline_dict['custom_pipe'].values()
             return feature_dict
 
-        if self.FE_pipeline_dict is not None and 'custom_pipeline' in self.FE_pipeline_dict.keys():
-            custom_features = list(itertools.chain(*self.FE_pipeline_dict['custom_pipeline'].values()))
+        if self.FE_pipeline_dict is not None and 'custom_pipe' in self.FE_pipeline_dict.keys():
+            custom_features = list(itertools.chain(*self.FE_pipeline_dict['custom_pipe'].values()))
         else:
             custom_features = []
 
@@ -396,7 +396,7 @@ class PreprocessFeatures(TransformerMixin):
             print('\noh_features:' + str(oh_features))
             print('\nhc_features:' + str(hc_features))
             print('\ndiscarded_features:' + str(discarded_features))
-            print('\ncustom_pipeline:' + str(custom_features))
+            print('\ncustom_pipe:' + str(custom_features))
 
         feature_dict = {'numeric_features': numeric_features,
                         'oh_features': oh_features,
@@ -451,8 +451,8 @@ class PreprocessFeatures(TransformerMixin):
             numeric_pipe = self.FE_pipeline_dict['numeric_pipe']
             oh_pipe = self.FE_pipeline_dict['oh_pipe']
             
-            custom_pipe = self.FE_pipeline_dict['custom_pipeline'] \
-                if 'custom_pipeline' in self.FE_pipeline_dict.keys() else {}
+            custom_pipe = self.FE_pipeline_dict['custom_pipe'] \
+                if 'custom_pipe' in self.FE_pipeline_dict.keys() else {}
 
         transformers = [
             ('hc_pipeline', hc_pipe, feature_types['hc_features']),
@@ -461,6 +461,7 @@ class PreprocessFeatures(TransformerMixin):
         ]
 
         if custom_pipe:
+            setattr(self, 'custom_features', list(set(np.concatenate(list(custom_pipe.values())))))
             i = 0
             for cp in custom_pipe.keys():
                 transformers.append(('custom_pipe{}'.format(str(i)), cp, custom_pipe[cp]))
