@@ -105,7 +105,7 @@ def parallize_pandas_func(df, df_attribute, parallelize_by_col=True, num_workers
         return df_out
 
 
-def get_column_names_from_ColumnTransformer(column_transformer, clean_column_names=False, verbose=True):
+def get_column_names_from_ColumnTransformer(column_transformer, clean_column_names=True, verbose=True):
 
     """
     Reference: Kyle Gilde: https://github.com/kylegilde/Kaggle-Notebooks/blob/master/Extracting-and-Plotting-Scikit-Feature-Names-and-Importances/feature_importance.py
