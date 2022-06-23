@@ -34,34 +34,34 @@ from category_encoders import TargetEncoder
 from sklearn.impute import MissingIndicator
 from sklearn.preprocessing import FunctionTransformer, OrdinalEncoder, LabelEncoder
 from sklearn.base import TransformerMixin
-from feature_engine.outliers import Winsorizer, ArbitraryOutlierCapper#, OutlierTrimmer
+from feature_engine.outliers import Winsorizer, ArbitraryOutlierCapper  # , OutlierTrimmer
 from imblearn.over_sampling import SMOTE, ADASYN, RandomOverSampler, KMeansSMOTE, SMOTENC, SVMSMOTE, BorderlineSMOTE
 from imblearn.under_sampling import (
-     RandomUnderSampler,
-     EditedNearestNeighbours,
-     TomekLinks,
-     AllKNN,
-     ClusterCentroids,
-     CondensedNearestNeighbour,
-     InstanceHardnessThreshold,
-     NearMiss,
-     OneSidedSelection)
+    RandomUnderSampler,
+    EditedNearestNeighbours,
+    TomekLinks,
+    AllKNN,
+    ClusterCentroids,
+    CondensedNearestNeighbour,
+    InstanceHardnessThreshold,
+    NearMiss,
+    OneSidedSelection)
 from sklearn.metrics import (
-     mean_squared_error,
-     mean_absolute_error,
-     mean_squared_log_error,
-     accuracy_score,
-     precision_score,
-     recall_score,
-     r2_score)
+    mean_squared_error,
+    mean_absolute_error,
+    mean_squared_log_error,
+    accuracy_score,
+    precision_score,
+    recall_score,
+    r2_score)
 from sklearn.ensemble import (
-     RandomForestRegressor,
-     RandomForestClassifier,
-     StackingRegressor,
-     StackingClassifier,AdaBoostClassifier,
-     AdaBoostRegressor,
-     HistGradientBoostingClassifier,
-     HistGradientBoostingRegressor)
+    RandomForestRegressor,
+    RandomForestClassifier,
+    StackingRegressor,
+    StackingClassifier, AdaBoostClassifier,
+    AdaBoostRegressor,
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor)
 from sklearn.decomposition import PCA, TruncatedSVD
 from catboost import CatBoostRegressor, CatBoostClassifier, Pool
 from xgboost import XGBRegressor, XGBClassifier
@@ -69,7 +69,8 @@ import pymysql
 from pandas.tseries.holiday import USFederalHolidayCalendar as calendar
 from sklearn.metrics import roc_auc_score
 from category_encoders.cat_boost import CatBoostEncoder
-from sklearn.linear_model import Ridge, Lasso, ElasticNet, LassoLars, BayesianRidge, LogisticRegression, TweedieRegressor
+from sklearn.linear_model import Ridge, Lasso, ElasticNet, LassoLars, BayesianRidge, LogisticRegression, \
+    TweedieRegressor
 from sklearn.svm import LinearSVR, LinearSVC
 from sklearn.dummy import DummyRegressor, DummyClassifier
 import plotly.express as px
@@ -80,6 +81,7 @@ import inspect
 from sklearn.utils.validation import check_is_fitted
 import sklearn
 import feather
+from skimpy import clean_columns
 
 
 def parallize_pandas_func(df, df_attribute, parallelize_by_col=True, num_workers=mp.cpu_count(), **kwargs):
@@ -101,21 +103,20 @@ def parallize_pandas_func(df, df_attribute, parallelize_by_col=True, num_workers
                 delayed_list.append(delayed(getattr(df_subset, df_attribute)(**kwargs)))
 
         dask_tuple = dask.compute(*delayed_list)
-        df_out = pd.concat([i for i in dask_tuple], axis = 1)
+        df_out = pd.concat([i for i in dask_tuple], axis=1)
         return df_out
 
 
-def get_column_names_from_ColumnTransformer(column_transformer, clean_column_names=True, verbose=True):
-
+def get_column_names_from_ColumnTransformer(column_transformer, clean_column_names=True, verbose=False):
     """
-    Reference: Kyle Gilde: https://github.com/kylegilde/Kaggle-Notebooks/blob/master/Extracting-and-Plotting-Scikit-Feature-Names-and-Importances/feature_importance.py
+    Reference: Kyle Gilde: https://github.com/kylegilde/Kaggle-Notebooks/blob/master/Extracolumn_transformering-and-Plotting-Scikit-Feature-Names-and-Importances/feature_importance.py
     Description: Get the column names from the a ColumnTransformer containing transformers & pipelines
     Parameters
     ----------
     verbose: Bool indicating whether to print summaries. Default set to True.
     Returns
     -------
-    a list of the correct feature names
+    a list of the correcolumn_transformer feature names
     Note:
     If the ColumnTransformer contains Pipelines and if one of the transformers in the Pipeline is adding completely new columns,
     it must come last in the pipeline. For example, OneHotEncoder, MissingIndicator & SimpleImputer(add_indicator=True) add columns
@@ -127,71 +128,111 @@ def get_column_names_from_ColumnTransformer(column_transformer, clean_column_nam
 
     check_is_fitted(column_transformer)
 
-    new_feature_names, transformer_list = [], []
+    try:
+        new_column_names = column_transformer.get_feature_names_out()
 
-    for i, transformer_item in enumerate(column_transformer.transformers_):
+    except:
 
-        transformer_name, transformer, orig_feature_names = transformer_item
-        orig_feature_names = list(orig_feature_names)
+        new_column_names, transformer_list = [], []
 
-        if len(orig_feature_names) == 0:
-            continue
+        for i, transformer_item in enumerate(column_transformer.transformers_):
 
-        if verbose:
-            print(f"\n\n{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}\n")
-            print(f"\tn_orig_feature_names:{len(orig_feature_names)}")
+            transformer_name, transformer, orig_feature_names = transformer_item
+            orig_feature_names = list(orig_feature_names)
 
-        if transformer == 'drop' or transformer == 'passthrough':
-            continue
+            if len(orig_feature_names) == 0:
+                continue
 
-        if isinstance(transformer, Pipeline):
-            # if pipeline, get the last transformer in the Pipeline
-            transformer = transformer.steps[-1][1]
+            if verbose:
+                print(f"\n\n{i}.Transformer/Pipeline: {transformer_name} {transformer.__class__.__name__}\n")
+                print(f"\tn_orig_feature_names:{len(orig_feature_names)}")
 
-        if hasattr(transformer, 'get_feature_names_out'):
-            if 'input_features' in transformer.get_feature_names_out.__code__.co_varnames:
-                names = list(transformer.get_feature_names_out(orig_feature_names))
-            else:
-                names = list(transformer.get_feature_names_out())
+            if transformer == 'drop' or transformer == 'passthrough':
+                continue
 
-        elif hasattr(transformer, 'get_feature_names'):
-            if 'input_features' in transformer.get_feature_names.__code__.co_varnames:
-                names = list(transformer.get_feature_names(orig_feature_names))
-            else:
-                names = list(transformer.get_feature_names())
+            try:
+                names = transformer.get_feature_names_out()
 
-        elif hasattr(transformer, 'indicator_') and transformer.add_indicator:
-            # is this transformer one of the imputers & did it call the MissingIndicator?
-            missing_indicator_indices = transformer.indicator_.features_
-            missing_indicators = [orig_feature_names[idx] + '_missing_flag' for idx in missing_indicator_indices]
-            names = orig_feature_names + missing_indicators
+            except:
 
-        elif hasattr(transformer, 'features_'):
-            # is this a MissingIndicator class?
-            missing_indicator_indices = transformer.features_
-            missing_indicators = [orig_feature_names[idx] + '_missing_flag' for idx in missing_indicator_indices]
+                try:
+                    names = transformer[:-1].get_feature_names_out()
 
-        else:
-            names = orig_feature_names
+                except:
 
-        if verbose:
-            print(f"\tn_new_features:{len(names)}")
-            print(f"\tnew_features: {names}\n")
+                    if isinstance(transformer, Pipeline):
 
-        new_feature_names.extend(names)
-        transformer_list.extend([transformer_name] * len(names))
+                        # if pipeline, get the last transformer in the Pipeline
+                        names = []
+                        for t in transformer:
+                            try:
+                                transformer_feature_names = t.get_feature_names_out()
+                            except:
+                                try:
+                                    transformer_feature_names = t.get_feature_names_out(orig_feature_names)
+                                except:
+                                    try:
+                                        transformer_feature_names = t[:-1].get_feature_names_out()
+                                    except:
+                                        transformer = transformer.steps[-1][1]
+                                        try:
+                                            transformer_feature_names = transformer.cols
+                                        except:
+                                            raise ValueError(f"Could not get column names for transformer {t}")
+
+                            [names.append(i) for i in transformer_feature_names if i not in names]
+
+                    if hasattr(transformer, 'get_feature_names_out'):
+                        if 'input_features' in transformer.get_feature_names_out.__code__.co_varnames:
+                            names = list(transformer.get_feature_names_out(input_features=orig_feature_names))
+
+                        else:
+                            names = list(transformer.get_feature_names_out())
+
+                    elif hasattr(transformer, 'get_feature_names'):
+                        if 'input_features' in transformer.get_feature_names.__code__.co_varnames:
+                            names = list(transformer.get_feature_names(orig_feature_names))
+                        else:
+                            names = list(transformer.get_feature_names())
+
+                    elif hasattr(transformer, 'indicator_') and transformer.add_indicator:
+                        # is this transformer one of the imputers & did it call the MissingIndicator?
+                        missing_indicator_indices = transformer.indicator_.features_
+                        missing_indicators = [orig_feature_names[idx] + '_missing_flag' for idx in
+                                              missing_indicator_indices]
+                        names = orig_feature_names + missing_indicators
+
+                    elif hasattr(transformer, 'features_'):
+                        # is this a MissingIndicator class?
+                        missing_indicator_indices = transformer.features_
+                        missing_indicators = [orig_feature_names[idx] + '_missing_flag' for idx in
+                                              missing_indicator_indices]
+
+                    else:
+                        names = orig_feature_names
+
+                    if verbose:
+                        print(f"\tn_new_features:{len(names)}")
+                        print(f"\tnew_features: {names}\n")
+
+            new_column_names.extend(names)
+            transformer_list.extend([transformer_name] * len(names))
+
+    if column_transformer.remainder == 'passthrough':
+        passthrough_cols = column_transformer.feature_names_in_[column_transformer.transformers_[-1][-1]]
+        new_column_names = new_column_names + [i for i in passthrough_cols if i not in new_column_names]
 
     if clean_column_names:
-        new_feature_names = list(clean_columns(pd.DataFrame(columns=new_feature_names)).columns)
+        new_column_names = list(clean_columns(pd.DataFrame(columns=new_column_names)).columns)
 
-    return new_feature_names
+    return new_column_names
+
 
 def ds_print(*args, verbose=True):
     if verbose: print(*args)
 
 
 class PreprocessFeatures(TransformerMixin):
-
     """
         Parameters
         ----------
@@ -200,13 +241,17 @@ class PreprocessFeatures(TransformerMixin):
         remainder : A string that gets passed to the column transformer whether to
                     drop preserve_vars or keep them in the final dataset
                     options are 'drop' or 'passthrough'
-        max_oh_cardinality : A natural number - one-hot encode all features with unique categories <= to this value
-        FE_pipeline_dict : Set to None to use "standard" feature engineering pipeline. Otherwise, supply a dictionary of pipelines to hc_pipe, oh_pipe, numeric_pipe, and custom_pipe
+        max_lc_cardinality : A natural number - one-hot encode all features with unique categories <= to this value
+        FE_pipeline_dict : Set to None to use "standard" feature engineering pipeline.
+            Otherwise, supply a dictionary of pipelines to hc_pipe, lc_pipe, numeric_pipe, and custom_pipe
+                numeric_pipe: numeric pipeline
+                hc_pipe: high-cardinal pipeline
+                lc_pipe: low-cardinal pipe
         n_jobs : An int - the number of threads to use
         copy : boolean to copy X_train and X_test while preprocessing
         -------
         Attributes
-        detect_feature_types attributes are dictionary attributes
+        detect_feature_groups attributes are dictionary attributes
         fit attributes are sklearn ColumnTransformer attributes
         -------
         Returns
@@ -221,45 +266,49 @@ class PreprocessFeatures(TransformerMixin):
                  preserve_vars=None,
                  FE_pipeline_dict=None,
                  remainder='passthrough',
-                 max_oh_cardinality=11,
-                 detect_dtypes=True,
+                 max_lc_cardinality=11,
+                 run_detect_feature_groups=True,
                  numeric_features=None,
-                 oh_features=None,
+                 lc_features=None,
                  hc_features=None,
                  overwrite_detection=True,
                  n_jobs=-1,
+                 clean_column_names=True,
                  copy=True,
                  verbose=True):
 
-        self.preserve_vars = preserve_vars
+        self.preserve_vars =preserve_vars
         self.target = target
         self.FE_pipeline_dict = FE_pipeline_dict
         self.remainder = remainder
-        self.max_oh_cardinality = max_oh_cardinality
-        self.detect_dtypes = detect_dtypes
+        self.max_lc_cardinality = max_lc_cardinality
+        self.run_detect_feature_groups = run_detect_feature_groups
         self.numeric_features = [] if numeric_features is None else numeric_features
-        self.oh_features = [] if oh_features is None else oh_features
+        self.lc_features = [] if lc_features is None else lc_features
         self.hc_features = [] if hc_features is None else hc_features
         self.overwrite_detection = overwrite_detection
         self.n_jobs = n_jobs
+        self.clean_column_names = clean_column_names,
         self.verbose = verbose
         self.copy = copy
         self.preserve_vars = [] if self.preserve_vars is None else self.preserve_vars
         self.target = '' if self.target is None else self.target
 
-        self.feature_transformer = ColumnTransformer(transformers=[], remainder=self.remainder, n_jobs=self.n_jobs)
+        self.column_transformer = ColumnTransformer(transformers=[],
+                                                    remainder=self.remainder,
+                                                    n_jobs=self.n_jobs)
 
-    def detect_feature_types(self, X):
+    def detect_feature_groups(self, X):
 
         if self.copy: X = X.copy()
 
-        if not self.detect_dtypes:
+        if not self.run_detect_feature_groups:
             if self.verbose: print('Not detecting dtypes.')
-  
+
             feature_dict = {'numeric_features': self.numeric_features,
-                            'oh_features': self.oh_features,
+                            'lc_features': self.lc_features,
                             'hc_features': self.hc_features}
-            if 'custom_pipe' in self.FE_pipeline_dict.keys():
+            if self.FE_pipeline_dict is not None and 'custom_pipe' in self.FE_pipeline_dict.keys():
                 feature_dict['custom_pipe'] = self.FE_pipeline_dict['custom_pipe'].values()
             return feature_dict
 
@@ -269,31 +318,31 @@ class PreprocessFeatures(TransformerMixin):
             custom_features = []
 
         assert len(np.intersect1d(list(set(self.numeric_features + \
-                                           self.oh_features + \
+                                           self.lc_features + \
                                            self.hc_features + \
                                            custom_features)), \
                                   self.preserve_vars)) == 0, \
             'There are duplicate features in preserve_vars either the input\
-             numeric_features, oh_features, or hc_features'
+             numeric_features, lc_features, or hc_features'
 
         detected_numeric_vars = make_column_selector(dtype_include=np.number)(
             X[[i for i in X.columns \
                if i not in self.preserve_vars + \
                [self.target] + \
                custom_features]])
-        
-        detected_oh_vars = [i for i in X.loc[:, (X.nunique() <= self.max_oh_cardinality) & \
-                                             (X.nunique() > 1)].columns \
+
+        detected_lc_vars = [i for i in X.loc[:, (X.nunique() <= self.max_lc_cardinality) & \
+                                                (X.nunique() > 1)].columns \
                             if i not in self.preserve_vars + \
                             [self.target] + \
                             custom_features]
-        
+
         detected_hc_vars = X[[i for i in X.columns \
                               if i not in self.preserve_vars + \
                               custom_features]] \
             .select_dtypes(['object', 'category']) \
             .apply(lambda col: col.nunique()) \
-            .loc[lambda x: x > self.max_oh_cardinality] \
+            .loc[lambda x: x > self.max_lc_cardinality] \
             .index.tolist()
 
         discarded_features = [i for i in X.isnull().sum()[X.isnull().sum() == X.shape[0]].index \
@@ -301,13 +350,13 @@ class PreprocessFeatures(TransformerMixin):
 
         numeric_features = list(set([i for i in self.numeric_features + \
                                      [i for i in detected_numeric_vars \
-                                      if i not in list(self.oh_features) + \
+                                      if i not in list(self.lc_features) + \
                                       list(self.hc_features) + \
                                       list(discarded_features) + \
                                       custom_features]]))
 
-        oh_features = list(set([i for i in self.oh_features + \
-                                [i for i in detected_oh_vars \
+        lc_features = list(set([i for i in self.lc_features + \
+                                [i for i in detected_lc_vars \
                                  if i not in list(self.numeric_features) + \
                                  list(self.hc_features) + \
                                  list(discarded_features) + \
@@ -316,75 +365,72 @@ class PreprocessFeatures(TransformerMixin):
         hc_features = list(set([i for i in self.hc_features + \
                                 [i for i in detected_hc_vars \
                                  if i not in list(self.numeric_features) + \
-                                 list(self.oh_features) + \
+                                 list(self.lc_features) + \
                                  list(discarded_features) + \
                                  custom_features]]))
 
         if self.verbose:
-            
-            print('Overlap between numeric and oh_features: ' + \
-                  str(list(set(np.intersect1d(numeric_features, oh_features)))))
+            print('Overlap between numeric and lc_features: ' + \
+                  str(list(set(np.intersect1d(numeric_features, lc_features)))))
             print('Overlap between numeric and hc_features: ' + \
                   str(list(set(np.intersect1d(numeric_features, hc_features)))))
-            print('Overlap between numeric oh_features and hc_features: ' + \
-                  str(list(set(np.intersect1d(oh_features, hc_features)))))
-            print('Overlap between oh_features and hc_features will be moved to oh_features')
-
+            print('Overlap between numeric lc_features and hc_features: ' + \
+                  str(list(set(np.intersect1d(lc_features, hc_features)))))
+            print('Overlap between lc_features and hc_features will be moved to lc_features')
 
         if self.overwrite_detection:
             numeric_features = [i for i in numeric_features \
-                                if i not in oh_features + \
+                                if i not in lc_features + \
                                 hc_features + \
                                 discarded_features + \
                                 custom_features]
-            
-            oh_features = [i for i in oh_features \
+
+            lc_features = [i for i in lc_features \
                            if i not in hc_features + \
                            numeric_features + \
                            discarded_features + \
                            custom_features]
-            
+
             hc_features = [i for i in hc_features if i not in \
-                           oh_features + \
+                           lc_features + \
                            numeric_features + \
                            discarded_features + \
                            custom_features]
 
         else:
             numeric_overlap = [i for i in numeric_features \
-                               if i in oh_features \
+                               if i in lc_features \
                                or i in hc_features \
                                and i not in discarded_features + \
                                custom_features]
-            
-            oh_overlap = [i for i in oh_features \
+
+            lc_overlap = [i for i in lc_features \
                           if i in hc_features \
                           or i in numeric_features \
                           and i not in discarded_features + \
                           custom_features]
-            
+
             hc_overlap = [i for i in hc_features \
-                          if i in oh_features \
+                          if i in lc_features \
                           or i in numeric_features \
                           and i not in discarded_features + \
                           custom_features]
 
-            if numeric_overlap or oh_overlap or hc_overlap:
-                
+            if numeric_overlap or lc_overlap or hc_overlap:
                 raise AssertionError('There is an overlap between numeric, \
-                                     oh, and hc features! \
+                                     lc, and hc features! \
                                      To ignore this set overwrite_detection to True.')
 
         all_features = list(set(numeric_features + \
-                                oh_features + \
+                                lc_features + \
                                 hc_features + \
                                 discarded_features + \
                                 custom_features))
-        
+
         all_features_debug = set(all_features) - \
-            set([i for i in X.columns \
-                 if i not in \
-                 self.preserve_vars + [self.target]])
+                             set([i for i in X.columns \
+                                  if i not in \
+                                  self.preserve_vars + [self.target]])
 
         if len(all_features_debug) > 0:
             print('\n{}\n'.format(all_features_debug))
@@ -393,54 +439,59 @@ class PreprocessFeatures(TransformerMixin):
 
         if self.verbose:
             print('\nnumeric_features:' + str(numeric_features))
-            print('\noh_features:' + str(oh_features))
+            print('\nlc_features:' + str(lc_features))
             print('\nhc_features:' + str(hc_features))
             print('\ndiscarded_features:' + str(discarded_features))
             print('\ncustom_pipe:' + str(custom_features))
 
         feature_dict = {'numeric_features': numeric_features,
-                        'oh_features': oh_features,
+                        'lc_features': lc_features,
                         'hc_features': hc_features,
                         'custom_features': custom_features,
                         'discarded_features': discarded_features}
 
         return feature_dict
 
-
-    def fit(self, X, y=None):
+    def instantiate_column_transformer(self, X, y=None):
 
         if self.target is None and y is not None:
             self.target = y.name
 
         assert y is not None or self.target is not None, '\n Both self.target and y cannot be None!'
 
-        if self.copy:
-            X = X.copy()
-            y = y.copy() if y is not None else y
-
-        feature_types = self.detect_feature_types(X)
+        self.feature_groups = self.detect_feature_groups(X)
 
         # set a default transformation pipeline if FE_pipeline_dict is not specified
         if self.FE_pipeline_dict is None:
 
-            # Default pipeline
+            ### Default pipelines ###
+
+            na_replacer = \
+                FunctionTransformer(lambda x: \
+                                        x.replace([-np.inf, np.inf, None, 'None', \
+                                                   '', ' ', 'nan', 'Nan'], \
+                                                  np.nan),
+                                    feature_names_out='one-to-one')
+
             numeric_pipe = make_pipeline(
-                FunctionTransformer(lambda x: x.replace([np.inf, -np.inf, None], np.nan)),
+                na_replacer,
                 # Winsorizer(distribution='gaussian', tail='both', fold=3, missing_values = 'ignore'),
                 MinMaxScaler(feature_range=(0, 1)),
                 SimpleImputer(strategy='median', add_indicator=True)
             )
 
             hc_pipe = make_pipeline(
-                FunctionTransformer(lambda x: x.replace([np.inf, -np.inf, None], np.nan).astype(str)),
-                TargetEncoder(return_df=True,
+                na_replacer,
+                FunctionTransformer(lambda x: x.astype(str), feature_names_out='one-to-one'),
+                TargetEncoder(cols=self.hc_features,
+                              return_df=True,
                               handle_missing='value',
                               handle_unknown='value',
                               min_samples_leaf=10)
             )
 
-            oh_pipe = make_pipeline(
-                FunctionTransformer(lambda x: x.replace([np.inf, -np.inf, None], np.nan).astype(str)),
+            lc_pipe = make_pipeline(
+                na_replacer,
                 OneHotEncoder(handle_unknown='ignore', sparse=False)
             )
 
@@ -449,16 +500,25 @@ class PreprocessFeatures(TransformerMixin):
         else:
             hc_pipe = self.FE_pipeline_dict['hc_pipe']
             numeric_pipe = self.FE_pipeline_dict['numeric_pipe']
-            oh_pipe = self.FE_pipeline_dict['oh_pipe']
-            
+            lc_pipe = self.FE_pipeline_dict['lc_pipe']
+
             custom_pipe = self.FE_pipeline_dict['custom_pipe'] \
                 if 'custom_pipe' in self.FE_pipeline_dict.keys() else {}
 
         transformers = [
-            ('hc_pipeline', hc_pipe, feature_types['hc_features']),
-            ('numeric_pipeline', numeric_pipe, feature_types['numeric_features']),
-            ('oh_encoder', oh_pipe, feature_types['oh_features'])
+            ('hc_pipe', hc_pipe, self.feature_groups['hc_features']),
+            ('numeric_pipe', numeric_pipe, self.feature_groups['numeric_features']),
+            ('lc_pipe', lc_pipe, self.feature_groups['lc_features'])
         ]
+
+        for alias, transformer, cols in transformers:
+            if isinstance(transformer, Pipeline):
+                for t in transformer:
+                    if 'cols' in list(inspect.signature(t.__class__).parameters.keys()):
+                        t.cols = cols
+            else:
+                if 'cols' in list(inspect.signature(t.__class__).parameters.keys()):
+                    t.cols = transformer[-1]
 
         if custom_pipe:
             setattr(self, 'custom_features', list(set(np.concatenate(list(custom_pipe.values())))))
@@ -467,28 +527,59 @@ class PreprocessFeatures(TransformerMixin):
                 transformers.append(('custom_pipe{}'.format(str(i)), cp, custom_pipe[cp]))
                 i += 1
 
-        self.feature_transformer.transformers = transformers
+        self.column_transformer.transformers = transformers
+
+    def fit(self, X, y=None):
+
+        self.instantiate_column_transformer(X, y)
 
         if y is None:
-            self.feature_transformer.fit(X)
+            self.column_transformer.fit(X)
         else:
-            self.feature_transformer.fit(X, y)
+            self.column_transformer.fit(X, y)
 
+        self.output_cols = get_column_names_from_ColumnTransformer(self.column_transformer,
+                                                                   clean_column_names=self.clean_column_names,
+                                                                   verbose=self.verbose)
 
-        output_cols = get_column_names_from_ColumnTransformer(self.feature_transformer, verbose=self.verbose)
+        if self.clean_column_names:
+            new_preserve_vars = list(
+                clean_columns(
+                    pd.DataFrame(
+                        columns=list(set(self.preserve_vars + [self.target]))
+                    )
+                ).columns
+            )
+        else:
+            new_preserve_vars = self.preserve_vars
 
-        if self.remainder == "passthrough":
-            output_cols = output_cols + [X.columns[i] for i in self.feature_transformer._remainder[2]]
+        if self.remainder == 'passthrough':
 
-        setattr(self, 'output_cols', output_cols)
-        setattr(self, 'output_features', [i for i in output_cols if i not in self.preserve_vars + [self.target]])
-        setattr(self, 'feature_types', feature_types)
+            cleaned_passthrough_cols = list(
+                clean_columns(
+                    pd.DataFrame(
+                        columns=self.column_transformer\
+                            .feature_names_in_[
+                            self.column_transformer.transformers_[-1][-1]
+                        ]
+                    )
+                ).columns)
+
+            [new_preserve_vars.append(i) for i in cleaned_passthrough_cols if i not in new_preserve_vars]
+
+        setattr(self, 'output_features',
+                [i for i in self.output_cols
+                 if i not in new_preserve_vars])
+        setattr(self, 'new_preserve_vars', new_preserve_vars)
+
+        assert len(set(self.output_features + self.new_preserve_vars)) == len(set(self.output_cols))
+        assert len(set(self.output_cols)) == len(self.output_cols)
 
         return self
 
     def transform(self, X, return_df=True):
 
-        X_out = self.feature_transformer.transform(X)
+        X_out = self.column_transformer.transform(X)
 
         if return_df:
             return pd.DataFrame(list(X_out), columns=self.output_cols)
@@ -496,9 +587,7 @@ class PreprocessFeatures(TransformerMixin):
             return X_out
 
 
-
 class FeatureImportance:
-
     """
 
     Extract & Plot the Feature Names & Importance Values from a Scikit-Learn Pipeline.
@@ -530,11 +619,11 @@ class FeatureImportance:
 
 
     """
+
     def __init__(self, pipeline, verbose=False):
 
         self.pipeline = pipeline
         self.verbose = verbose
-
 
     def get_feature_names(self):
 
@@ -564,11 +653,10 @@ class FeatureImportance:
         else:
             column_transformer = self.pipeline[0]
 
-
         assert isinstance(column_transformer, ColumnTransformer), "Input isn't a ColumnTransformer"
         check_is_fitted(column_transformer)
 
-        new_feature_names, transformer_list = [], []
+        new_column_names, transformer_list = [], []
 
         for i, transformer_item in enumerate(column_transformer.transformers_):
 
@@ -597,14 +685,14 @@ class FeatureImportance:
                         if self.verbose: print('transformer ' + str(i) + ' is not fitted!')
                         continue
 
-            elif hasattr(transformer,'indicator_') and transformer.add_indicator:
+            elif hasattr(transformer, 'indicator_') and transformer.add_indicator:
                 # is this transformer one of the imputers & did it call the MissingIndicator?
 
                 missing_indicator_indices = transformer.indicator_.features_
                 missing_indicators = [orig_feature_names[idx] + '_missing_flag' for idx in missing_indicator_indices]
                 names = orig_feature_names + missing_indicators
 
-            elif hasattr(transformer,'features_'):
+            elif hasattr(transformer, 'features_'):
                 # is this a MissingIndicator class?
                 missing_indicator_indices = transformer.features_
                 missing_indicators = [orig_feature_names[idx] + '_missing_flag' for idx in missing_indicator_indices]
@@ -616,13 +704,12 @@ class FeatureImportance:
                 print('\tn_new_features:', len(names))
                 print('\tnew_features:\n', names)
 
-            new_feature_names.extend(names)
+            new_column_names.extend(names)
             transformer_list.extend([transformer_name] * len(names))
 
-        self.transformer_list, self.column_transformer_features = transformer_list, new_feature_names
+        self.transformer_list, self.column_transformer_features = transformer_list, new_column_names
 
-        return new_feature_names
-
+        return new_column_names
 
     def get_selected_features(self):
         """
@@ -668,8 +755,8 @@ class FeatureImportance:
                     if len(discarded_features) > 0:
                         print('\n\tdiscarded_features:\n\n', discarded_features)
 
-        self.discarded_features, self.discarding_selectors = all_discarded_features,\
-                                                                discarding_selectors
+        self.discarded_features, self.discarding_selectors = all_discarded_features, \
+                                                             discarding_selectors
 
         return features
 
@@ -690,36 +777,34 @@ class FeatureImportance:
 
         features = self.get_selected_features()
 
-        assert hasattr(self.pipeline[-1], 'feature_importances_'),\
+        assert hasattr(self.pipeline[-1], 'feature_importances_'), \
             "The last element in the pipeline isn't an estimator with a feature_importances_ attribute"
 
         importance_values = self.pipeline[-1].feature_importances_
 
-        assert len(features) == len(importance_values),\
+        assert len(features) == len(importance_values), \
             "The number of feature names & importance values doesn't match"
 
         feature_importance = pd.Series(importance_values, index=features)
         self.feature_importance = feature_importance
 
         # create feature_info_df
-        column_transformer_df =\
+        column_transformer_df = \
             pd.DataFrame(dict(transformer=self.transformer_list),
                          index=self.column_transformer_features)
 
-        discarded_features_df =\
+        discarded_features_df = \
             pd.DataFrame(dict(discarding_selector=self.discarding_selectors),
                          index=self.discarded_features)
 
         importance_df = self.feature_importance.rename('value').to_frame()
 
         self.feature_info_df = \
-            column_transformer_df\
-            .join([importance_df, discarded_features_df])\
-            .assign(is_retained = lambda df: ~df.value.isna())
-
+            column_transformer_df \
+                .join([importance_df, discarded_features_df]) \
+                .assign(is_retained=lambda df: ~df.value.isna())
 
         return feature_importance
-
 
     def plot(self, top_n_features=100, rank_features=True, max_scale=True,
              display_imp_values=True, display_imp_value_decimals=1,
@@ -764,18 +849,18 @@ class FeatureImportance:
         all_importances = self.get_feature_importance()
         n_all_importances = len(all_importances)
 
-        plot_importances_df =\
-            all_importances\
-            .nlargest(top_n_features)\
-            .sort_values()\
-            .to_frame('value')\
-            .rename_axis('feature')\
-            .reset_index()
+        plot_importances_df = \
+            all_importances \
+                .nlargest(top_n_features) \
+                .sort_values() \
+                .to_frame('value') \
+                .rename_axis('feature') \
+                .reset_index()
 
         if max_scale:
             plot_importances_df['value'] = \
-                                plot_importances_df.value.abs() /\
-                                plot_importances_df.value.abs().max() * 100
+                plot_importances_df.value.abs() / \
+                plot_importances_df.value.abs().max() * 100
 
         self.plot_importances_df = plot_importances_df.copy()
 
@@ -786,18 +871,18 @@ class FeatureImportance:
 
         if rank_features:
             padded_features = \
-                plot_importances_df.feature\
-                .str.pad(width=str_pad_width)\
-                .values
+                plot_importances_df.feature \
+                    .str.pad(width=str_pad_width) \
+                    .values
 
-            ranked_features =\
-                plot_importances_df.index\
-                .to_series()\
-                .sort_values(ascending=False)\
-                .add(1)\
-                .astype(str)\
-                .str.cat(padded_features, sep='. ')\
-                .values
+            ranked_features = \
+                plot_importances_df.index \
+                    .to_series() \
+                    .sort_values(ascending=False) \
+                    .add(1) \
+                    .astype(str) \
+                    .str.cat(padded_features, sep='. ') \
+                    .values
 
             plot_importances_df['feature'] = ranked_features
 
@@ -826,8 +911,8 @@ class FeatureImportance:
 def ds_print(*args, verbose=True):
     if verbose: print(*args)
 
-class RunModel():
 
+class RunModel():
     """
 
         Parameters
@@ -911,7 +996,6 @@ class RunModel():
         self.predict_proba = predict_proba
         self.kwargs = kwargs
 
-
         if self.copy:
             self.X_train, self.X_test = self.X_train.copy(), self.X_test.copy()
             self.y_train = self.y_train.copy()
@@ -929,7 +1013,6 @@ class RunModel():
                 X_val_tmp, y_val_tmp = X_val_tmp.copy(), y_val_tmp.copy()
 
             if self.convert_float32:
-
                 # self.X_val[self.features] = parallize_pandas_func(self.X_val[self.features], 'astype', dtype='float32', copy=self.copy)
                 X_val_tmp[self.features] = X_val_tmp[self.features].astype('float32')
 
@@ -942,21 +1025,25 @@ class RunModel():
 
         assert all(f in self.X_train.columns for f in self.features), 'Missing features in X_train!'
 
-        if not self.bypass_all_numeric: # need to check all features are numeric
-            assert len(list(set([i for i in self.X_train.select_dtypes(include = np.number).columns if i in self.features]))) == len(self.features), 'Not all features in X_train are numeric!'
+        if not self.bypass_all_numeric:  # need to check all features are numeric
+            assert len(list(
+                set([i for i in self.X_train.select_dtypes(include=np.number).columns if i in self.features]))) == len(
+                self.features), 'Not all features in X_train are numeric!'
 
             if (self.use_eval_set_when_possible) and (self.eval_set is not None):
-
                 assert all(f in self.eval_set[0][0].columns for f in self.features), 'Missing features in X_val!'
-                assert len(list(set([i for i in self.eval_set[0][0].select_dtypes(include = np.number).columns if i in self.features]))) == len(self.features), 'Not all features in X_val are numeric!'
+                assert len(list(set([i for i in self.eval_set[0][0].select_dtypes(include=np.number).columns if
+                                     i in self.features]))) == len(
+                    self.features), 'Not all features in X_val are numeric!'
 
-        assert self.X_train.shape[0] == len(self.y_train),'X_train shape does not match y_train shape!'
+        assert self.X_train.shape[0] == len(self.y_train), 'X_train shape does not match y_train shape!'
 
         ds_print('\nRunning ' + type(self.algorithm).__name__ + '...\n')
 
         if ('fit_params' in self.kwargs.keys()) and \
-            (set(list(self.kwargs['fit_params'].keys()) + ['eval_set'])).issubset(list(inspect.signature(self.algorithm.fit).parameters)) and \
-            (len(self.kwargs['fit_params']) > 0):
+                (set(list(self.kwargs['fit_params'].keys()) + ['eval_set'])).issubset(
+                    list(inspect.signature(self.algorithm.fit).parameters)) and \
+                (len(self.kwargs['fit_params']) > 0):
 
             # All kwargs in the fit_params are available in the model.fit object
             # (e.g. list(inspect.getfullargspec(RandomForestClassifier.fit))[0] must have all params inside fit_params)
@@ -964,7 +1051,8 @@ class RunModel():
             ds_print('\nUsing a validation set for ' + type(self.algorithm).__name__ + '...\n')
 
             if self.use_eval_set_when_possible and self.eval_set is not None:
-                model = self.algorithm.fit(self.X_train, self.y_train, eval_set = self.eval_set, **self.kwargs['fit_params'])
+                model = self.algorithm.fit(self.X_train, self.y_train, eval_set=self.eval_set,
+                                           **self.kwargs['fit_params'])
             else:
                 model = self.algorithm.fit(self.X_train, self.y_train, **self.kwargs['fit_params'])
 
@@ -980,7 +1068,6 @@ class RunModel():
             ds_print("\n" + type(model).__name__ + " training done!\n")
 
         return model
-
 
     def predict_model(self, model):
 
@@ -1004,7 +1091,8 @@ class RunModel():
                     predictions = model.predict_proba(self.X_test[self.features], **self.kwargs['predict_params'])[:, 1]
                 except:
                     try:
-                        predictions = model.decision_function(self.X_test[self.features], **self.kwargs['predict_params'])[:, 1]
+                        predictions = model.decision_function(self.X_test[self.features],
+                                                              **self.kwargs['predict_params'])[:, 1]
                     except:
                         sys.exit('model does not have predict_proba or decision_function attribute')
         else:
@@ -1021,7 +1109,6 @@ class RunModel():
                         ds_print('model does not have predict_proba or decision_function attribute')
                         sys.exit()
 
-
         if not self.map_predictions_to_df_full:
             ds_print('Returning only X_test to df_pred in model_dict')
             assert len(predictions) == self.X_test.shape[0]
@@ -1035,7 +1122,6 @@ class RunModel():
             self.df_full[self.prediction_colname] = predictions
             return self.df_full
 
-
     def train_and_predict(self):
 
         run_model_dict = dict()
@@ -1044,8 +1130,8 @@ class RunModel():
 
         return run_model_dict
 
-class Resampler():
 
+class Resampler():
     """
     Parameters
     ----------
@@ -1071,6 +1157,7 @@ class Resampler():
         df_resampled = self.algorithm.fit_resample(X, y)
         return df_resampled
 
+
 def timeseries_split(df,
                      datetime_col='date',
                      split_by_datetime_col=True,
@@ -1082,7 +1169,6 @@ def timeseries_split(df,
                      sort_df_params={},
                      reset_datetime_index=True,
                      copy=True):
-
     """
 
     Get the column names from the a ColumnTransformer containing transformers & pipelines
@@ -1146,27 +1232,29 @@ def timeseries_split(df,
             df.loc[df[datetime_col] >= max_val_date, split_colname] = 'test'
 
         else:
-            df.loc[0:int(np.floor(nrows*train_prop)), split_colname] = 'train'
-            df.loc[int(np.floor(nrows*train_prop)): int(np.floor(nrows*(1 - val_prop))), split_colname] = 'val'
-            df.loc[int(np.floor(nrows*(1 - val_prop))):, split_colname] = 'test'
+            df.loc[0:int(np.floor(nrows * train_prop)), split_colname] = 'train'
+            df.loc[int(np.floor(nrows * train_prop)): int(np.floor(nrows * (1 - val_prop))), split_colname] = 'val'
+            df.loc[int(np.floor(nrows * (1 - val_prop))):, split_colname] = 'test'
 
         return df
 
     else:
 
-        X_train = df.iloc[0:int(np.floor(nrows*train_prop))][feature_list]
-        y_train = df.iloc[0:int(np.floor(nrows*train_prop))][target_name]
+        X_train = df.iloc[0:int(np.floor(nrows * train_prop))][feature_list]
+        y_train = df.iloc[0:int(np.floor(nrows * train_prop))][target_name]
 
-        X_val = df.iloc[int(np.floor(nrows*train_prop)):int(np.floor(nrows*(1 - val_prop)))][feature_list]
-        y_val = df.iloc[int(np.floor(nrows*train_prop)):int(np.floor(nrows*(1 - val_prop)))][target_name]
+        X_val = df.iloc[int(np.floor(nrows * train_prop)):int(np.floor(nrows * (1 - val_prop)))][feature_list]
+        y_val = df.iloc[int(np.floor(nrows * train_prop)):int(np.floor(nrows * (1 - val_prop)))][target_name]
 
-        X_test = df.iloc[int(np.floor(nrows*(1 - val_prop))):][feature_list]
-        y_test = df.iloc[int(np.floor(nrows*(1 - val_prop))):][target_name]
+        X_test = df.iloc[int(np.floor(nrows * (1 - val_prop))):][feature_list]
+        y_test = df.iloc[int(np.floor(nrows * (1 - val_prop))):][target_name]
 
         return X_train, y_train, X_val, y_val, X_test, y_test
 
+
 def find_list_duplicates(input_list):
     return [item for item, count in Counter(input_list).items() if count > 1]
+
 
 def merge_dicts(*dict_args):
     """
