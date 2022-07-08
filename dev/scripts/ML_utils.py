@@ -546,7 +546,7 @@ class PreprocessFeatures(TransformerMixin):
             new_preserve_vars = list(
                 clean_columns(
                     pd.DataFrame(
-                        columns=list(set(self.preserve_vars))
+                        columns=list(set(self.preserve_vars + [self.target]))
                     )
                 ).columns
             )
