@@ -277,7 +277,7 @@ class PreprocessFeatures(TransformerMixin):
                  copy=True,
                  verbose=True):
 
-        self.preserve_vars = preserve_vars
+        self.preserve_vars =preserve_vars
         self.target = target
         self.FE_pipeline_dict = FE_pipeline_dict
         self.remainder = remainder
@@ -341,7 +341,7 @@ class PreprocessFeatures(TransformerMixin):
                               if i not in self.preserve_vars + \
                               custom_features]] \
             .select_dtypes(['object', 'category']) \
-            .apply(lambda col: col.nunique()) \
+            .apply(lambda col: col.nunique(dropna=False)) \
             .loc[lambda x: x > self.max_lc_cardinality] \
             .index.tolist()
 
@@ -356,8 +356,8 @@ class PreprocessFeatures(TransformerMixin):
                                       custom_features]]))
 
         lc_features = list(set([i for i in self.lc_features + \
-                                [j for j in detected_lc_vars \
-                                 if j not in list(self.numeric_features) + \
+                                [i for i in detected_lc_vars \
+                                 if i not in list(self.numeric_features) + \
                                  list(self.hc_features) + \
                                  list(discarded_features) + \
                                  custom_features]]))
@@ -379,19 +379,23 @@ class PreprocessFeatures(TransformerMixin):
             print('Overlap between lc_features and hc_features will be moved to lc_features')
 
         if self.overwrite_detection:
-
-            lc_features = [i for i in lc_features if i not in discarded_features + custom_features]
-
-            hc_features = [i for i in hc_features if i not in \
-                           lc_features + \
-                           discarded_features + \
-                           custom_features]
-
             numeric_features = [i for i in numeric_features \
                                 if i not in lc_features + \
                                 hc_features + \
                                 discarded_features + \
                                 custom_features]
+
+            lc_features = [i for i in lc_features \
+                           if i not in hc_features + \
+                           numeric_features + \
+                           discarded_features + \
+                           custom_features]
+
+            hc_features = [i for i in hc_features if i not in \
+                           lc_features + \
+                           numeric_features + \
+                           discarded_features + \
+                           custom_features]
 
         else:
             numeric_overlap = [i for i in numeric_features \
@@ -434,11 +438,11 @@ class PreprocessFeatures(TransformerMixin):
                 Check if there is an overlap between preserve_vars and other custom input features')
 
         if self.verbose:
-            print('\nnumeric_features:' + str(numeric_features))
-            print('\nlc_features:' + str(lc_features))
-            print('\nhc_features:' + str(hc_features))
-            print('\ndiscarded_features:' + str(discarded_features))
-            print('\ncustom_features:' + str(custom_features))
+            print(f'\nnumeric_features: {numeric_features}')
+            print(f'\nlc_features: {lc_features}')
+            print(f'\nhc_features: {hc_features}')
+            print(f'\ndiscarded_features: {discarded_features}')
+            print(f'\ncustom_features: {custom_features}')
 
         feature_dict = {'numeric_features': numeric_features,
                         'lc_features': lc_features,
@@ -479,7 +483,7 @@ class PreprocessFeatures(TransformerMixin):
             hc_pipe = make_pipeline(
                 na_replacer,
                 FunctionTransformer(lambda x: x.astype(str), feature_names_out='one-to-one'),
-                TargetEncoder(# cols=self.hc_features,
+                TargetEncoder(cols=self.hc_features,
                               return_df=True,
                               handle_missing='value',
                               handle_unknown='value',
@@ -507,14 +511,14 @@ class PreprocessFeatures(TransformerMixin):
             ('lc_pipe', lc_pipe, self.feature_groups['lc_features'])
         ]
 
-        # for alias, transformer, cols in transformers:
-        #     if isinstance(transformer, Pipeline):
-        #         for t in transformer:
-        #             if 'cols' in list(inspect.signature(t.__class__).parameters.keys()):
-        #                 t.cols = cols
-        #     else:
-        #         if 'cols' in list(inspect.signature(t.__class__).parameters.keys()):
-        #             t.cols = transformer[-1]
+        for alias, transformer, cols in transformers:
+            if isinstance(transformer, Pipeline):
+                for t in transformer:
+                    if 'cols' in list(inspect.signature(t.__class__).parameters.keys()):
+                        t.cols = cols
+            else:
+                if 'cols' in list(inspect.signature(t.__class__).parameters.keys()):
+                    t.cols = transformer[-1]
 
         if custom_pipe:
             setattr(self, 'custom_features', list(set(np.concatenate(list(custom_pipe.values())))))
@@ -524,7 +528,6 @@ class PreprocessFeatures(TransformerMixin):
                 i += 1
 
         self.column_transformer.transformers = transformers
-
 
     def fit(self, X, y=None):
 
@@ -543,7 +546,7 @@ class PreprocessFeatures(TransformerMixin):
             new_preserve_vars = list(
                 clean_columns(
                     pd.DataFrame(
-                        columns=list(set(self.preserve_vars + [self.target]))
+                        columns=list(set(self.preserve_vars))
                     )
                 ).columns
             )
@@ -564,14 +567,12 @@ class PreprocessFeatures(TransformerMixin):
 
             [new_preserve_vars.append(i) for i in cleaned_passthrough_cols if i not in new_preserve_vars]
 
-
         setattr(self, 'output_features',
                 [i for i in self.output_cols
                  if i not in new_preserve_vars])
-
         setattr(self, 'new_preserve_vars', new_preserve_vars)
 
-        assert len(set(self.output_features + self.new_preserve_vars)) == len(set(self.output_cols))
+        assert len(self.output_features + self.new_preserve_vars) == len(self.output_cols)
         assert len(set(self.output_cols)) == len(self.output_cols)
 
         return self
