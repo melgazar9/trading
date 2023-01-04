@@ -147,7 +147,7 @@ packaging==20.1
 pandarallel==1.4.8
 pandas==1.2.3
 pandocfilters==1.4.2
-paramiko==2.7.2
+paramiko==2.10.1
 parso==0.5.2
 partd==1.1.0
 path==13.1.0
