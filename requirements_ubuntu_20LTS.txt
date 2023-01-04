@@ -159,7 +159,7 @@ plotly==5.8.2
 progressbar2==4.0.0
 prometheus-client==0.13.1
 prompt-toolkit==3.0.28
-protobuf==3.6.1
+protobuf==3.18.3
 psutil==5.9.0
 ptyprocess==0.7.0
 pure-eval==0.2.2
