@@ -33,7 +33,7 @@ colorama==0.4.3
 commonmark==0.9.1
 contextlib2==0.6.0.post1
 coverage==5.1
-cryptography==3.4.7
+cryptography==39.0.1
 cycler==0.10.0
 Cython==0.29.15
 dask==2021.4.0
