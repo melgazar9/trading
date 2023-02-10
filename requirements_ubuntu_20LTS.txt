@@ -83,7 +83,7 @@ ipydatawidgets==4.2.0
 ipykernel==6.9.1
 ipyleaflet==0.15.0
 ipympl==0.8.8
-ipython==8.1.0
+ipython==8.10.0
 ipython-genutils==0.2.0
 ipyvolume==0.5.2
 ipyvue==1.7.0
