@@ -218,7 +218,7 @@ sortedcontainers==2.4.0
 spinners==0.0.24
 SQLAlchemy==1.4.32
 stack-data==0.2.0
-starlette==0.17.1
+starlette==0.25.0
 statsmodels==0.13.2
 stopit==1.1.2
 systemd-python==234
